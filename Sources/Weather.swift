@@ -99,7 +99,7 @@ class WeatherView: NSView {
     var debugPresetName: String? { debugPreset.map { Wx.presets[$0].0 } }
     var weatherLine: String {
         var s = "\(defaults.string(forKey: "cityName") ?? "서울") · \(wx.desc)" + (temp.map { String(format: " · %.0f°C", $0) } ?? "")
-        if let i = debugPreset { s = "🐞 \(Wx.presets[i].0) · " + s }; return s }
+        if let i = debugPreset { s = "🐞 \(Wx.presets[i].0) · " + s } else if let m = staleMinutes { s += m >= 120 ? " · \(m/60)시간 전" : " · \(m)분 전" }; return s }
     override func updateTrackingAreas() {
         super.updateTrackingAreas(); trackingAreas.forEach(removeTrackingArea)
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
@@ -129,7 +129,13 @@ class WeatherView: NSView {
         let g = glassRect; card.frame = NSRect(x: g.minX + 8, y: g.maxY - 62, width: g.width - 16, height: 54); addSubview(card); card.isHidden = true
         for _ in 0..<160 { parts.append((.random(in: 0...1), .random(in: 0...1), .random(in: 0.3...1))) }
         Timer.scheduledTimer(withTimeInterval: 1/24, repeats: true) { [weak self] _ in self?.tick() }
-        Timer.scheduledTimer(withTimeInterval: 900, repeats: true) { [weak self] _ in self?.fetch() }
+        // Wall-clock driven refresh (NSTimer intervals pause during sleep): every minute recompute day/night
+        // from the clock + real sunrise/sunset, and refetch when data is ≥15 min old (retry each minute on failure)
+        Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in self?.clockTick() }
+        for n in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification, NSWorkspace.sessionDidBecomeActiveNotification] {
+            NSWorkspace.shared.notificationCenter.addObserver(forName: n, object: nil, queue: .main) { [weak self] _ in
+                self?.lastFetchAttempt = 0; self?.clockTick()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) { self?.fetch() } } }
         fetch()
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -151,7 +157,22 @@ class WeatherView: NSView {
         needsDisplay = true
     }
 
+    var lastFetchOK: TimeInterval = 0, lastFetchAttempt: TimeInterval = 0
+    static func tod(_ d: Date) -> Double { let x = Calendar.current.dateComponents([.hour, .minute], from: d); return Double(x.hour!) + Double(x.minute!)/60 }
+    func clockTick() {
+        let now = Date().timeIntervalSince1970
+        var w = currentWx
+        w.hour = WeatherView.tod(Date()); w.month = Calendar.current.component(.month, from: Date())
+        w.sunrise = WeatherView.tod(sunriseT); w.sunset = WeatherView.tod(sunsetT)
+        w.isDay = w.hour >= w.sunrise && w.hour < w.sunset            // clock is the source of truth for day/night
+        if lastFetchOK > 0 && now - lastFetchOK > 3 * 3600 { w.rainbow = false }   // very stale: drop transient effects
+        currentWx = w; publish()
+        let stale = now - lastFetchOK >= 15 * 60
+        if stale && now - lastFetchAttempt >= 55 { fetch() }
+    }
+    var staleMinutes: Int? { lastFetchOK == 0 ? nil : { let m = Int((Date().timeIntervalSince1970 - lastFetchOK) / 60); return m >= 30 ? m : nil }() }
     func fetch() {
+        lastFetchAttempt = Date().timeIntervalSince1970
         let lat = defaults.object(forKey: "lat") as? Double ?? 37.5665, lon = defaults.object(forKey: "lon") as? Double ?? 126.978
         let f = URL(string: "https://api.open-meteo.com/v1/forecast?latitude=\(lat)&longitude=\(lon)&current=temperature_2m,relative_humidity_2m,weather_code,is_day,wind_speed_10m,uv_index,visibility&daily=sunrise,sunset&forecast_days=1&timezone=auto")!
         let a = URL(string: "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=\(lat)&longitude=\(lon)&current=pm10,pm2_5&timezone=auto")!
@@ -170,6 +191,7 @@ class WeatherView: NSView {
                 w.sunrise = tod(sunriseT); w.sunset = tod(sunsetT); w.hour = tod(Date()); w.month = cal.component(.month, from: Date())
                 if w.precip != .none { self.lastRainAt = Date() }
                 w.rainbow = w.isDay && w.precip == .none && w.clouds <= 0.5 && (self.lastRainAt.map { Date().timeIntervalSince($0) < 3600 } ?? false)
+                self.lastFetchOK = Date().timeIntervalSince1970
                 currentWx = w; self.publish()
             }
         }.resume()
@@ -179,9 +201,9 @@ class WeatherView: NSView {
         }.resume()
     }
     func publish() {
+        currentWx.hour = WeatherView.tod(Date())   // update clock BEFORE deriving light
         let w = currentWx   // plant sim always uses REAL weather, not debug previews
         outdoorLight = w.light; outdoorTemp = w.temp; windSpeed = w.wind; pm10 = w.pm10; pm25 = w.pm25; weatherKnown = true
-        if debugPreset == nil { currentWx.hour = { let c = Calendar.current.dateComponents([.hour, .minute], from: Date()); return Double(c.hour!) + Double(c.minute!)/60 }() }
         needsDisplay = true
     }
 
@@ -410,7 +432,7 @@ class CardView: NSView {
         let sub: [NSAttributedString.Key: Any] = [.font: cute(11, .medium), .foregroundColor: NSColor(white: 1, alpha: 0.72)]
         let big: [NSAttributedString.Key: Any] = [.font: cute(17), .foregroundColor: NSColor.white]
         let pad: CGFloat = designRound ? 16 : 13, top = bounds.height - 10 - 19
-        let head = (o.debugPresetName.map { "\($0) · " } ?? "") + "\(city) · \(w.desc)"
+        let head = (o.debugPresetName.map { "\($0) · " } ?? "") + "\(city) · \(w.desc)" + (debugPreset == nil ? (o.staleMinutes.map { $0 >= 120 ? " · \($0/60)시간 전" : " · \($0)분 전" } ?? "") : "")
         (head as NSString).draw(at: NSPoint(x: pad, y: top), withAttributes: title)
         if let t = o.temp { let ts = String(format: "%.0f°", t) as NSString, sz = ts.size(withAttributes: big)
             ts.draw(at: NSPoint(x: bounds.width - pad - sz.width, y: top - 2), withAttributes: big)

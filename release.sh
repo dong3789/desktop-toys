@@ -6,9 +6,9 @@ V="$1"; NOTES="${2:-버그 수정 및 개선}"
 REPO=dong3789/desktop-toys
 export GH_TOKEN=$(gh auth token --user dong3789)          # publish as the personal account without switching gh
 echo "$V" > VERSION
-./build.sh
+STAGE=$(mktemp -d); APP="$STAGE/DesktopToys.app" ./build.sh   # build into staging; installed copies update via the in-app updater
 S=$(mktemp -d)/DesktopToys; mkdir -p "$S"
-ditto ~/Applications/DesktopToys.app "$S/DesktopToys.app"; xattr -cr "$S/DesktopToys.app"
+ditto "$STAGE/DesktopToys.app" "$S/DesktopToys.app"; xattr -cr "$S/DesktopToys.app"
 cp dist-assets/설치방법.txt "$S/"
 rm -f DesktopToys.zip; (cd "$(dirname "$S")" && ditto -c -k --keepParent DesktopToys "$OLDPWD/DesktopToys.zip")
 cp DesktopToys.zip ~/Desktop/DesktopToys.zip

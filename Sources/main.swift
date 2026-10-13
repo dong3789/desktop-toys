@@ -109,7 +109,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func ipCity() {
         URLSession.shared.dataTask(with: URL(string: "https://ipapi.co/json/")!) { d, _, _ in
             guard let d, let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any], let la = (j["latitude"] as? NSNumber)?.doubleValue, let lo = (j["longitude"] as? NSNumber)?.doubleValue else { return }
-            let name = (j["city"] as? String) ?? "현재 위치"
+            let name = koreanCity((j["city"] as? String) ?? "현재 위치")
             DispatchQueue.main.async { self.setCity(name, la, lo) } }.resume()
     }
     func menuWillOpen(_ menu: NSMenu) {
@@ -276,4 +276,5 @@ if let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i+1 < CommandLine
     try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: CommandLine.arguments[i+1])); exit(0)
 }
 if let me = Bundle.main.bundleIdentifier, NSRunningApplication.runningApplications(withBundleIdentifier: me).filter({ $0.processIdentifier != getpid() }).count > 0 { exit(0) }   // single instance
+if let c = defaults.string(forKey: "cityName"), koreanCity(c) != c { defaults.set(koreanCity(c), forKey: "cityName") }   // migrate English IP city names
 let app = NSApplication.shared; let del = AppDelegate(); app.delegate = del; app.setActivationPolicy(.accessory); app.run()

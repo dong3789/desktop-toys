@@ -104,3 +104,16 @@ func windowShape(_ r0: NSRect, _ d: CGFloat) -> NSBezierPath {
     default: let rr = max(designRound ? 4 : 0, R(16) - d * 0.4); return NSBezierPath(roundedRect: r, xRadius: rr, yRadius: rr)
     }
 }
+
+/// Korean names for cities returned by IP geolocation (English)
+let CITY_KO: [String: String] = ["Seoul": "서울", "Busan": "부산", "Incheon": "인천", "Daegu": "대구", "Daejeon": "대전", "Gwangju": "광주", "Ulsan": "울산", "Sejong": "세종",
+    "Suwon": "수원", "Suwon-si": "수원시", "Seongnam": "성남", "Seongnam-si": "성남시", "Goyang": "고양", "Goyang-si": "고양시", "Yongin": "용인", "Yongin-si": "용인시",
+    "Bucheon": "부천", "Bucheon-si": "부천시", "Ansan": "안산", "Ansan-si": "안산시", "Anyang": "안양", "Anyang-si": "안양시", "Hwaseong": "화성", "Hwaseong-si": "화성시",
+    "Namyangju": "남양주", "Namyangju-si": "남양주시", "Pyeongtaek": "평택", "Pyeongtaek-si": "평택시", "Siheung": "시흥", "Siheung-si": "시흥시", "Gimpo": "김포", "Gimpo-si": "김포시",
+    "Paju": "파주", "Paju-si": "파주시", "Uijeongbu": "의정부", "Uijeongbu-si": "의정부시", "Hanam": "하남", "Hanam-si": "하남시", "Gwangmyeong": "광명", "Gwangmyeong-si": "광명시",
+    "Gunpo": "군포", "Gunpo-si": "군포시", "Guri": "구리", "Guri-si": "구리시", "Osan": "오산", "Osan-si": "오산시", "Icheon": "이천", "Icheon-si": "이천시",
+    "Cheongju": "청주", "Cheongju-si": "청주시", "Cheonan": "천안", "Cheonan-si": "천안시", "Jeonju": "전주", "Jeonju-si": "전주시", "Changwon": "창원", "Changwon-si": "창원시",
+    "Gimhae": "김해", "Gimhae-si": "김해시", "Pohang": "포항", "Pohang-si": "포항시", "Gumi": "구미", "Gumi-si": "구미시", "Jinju": "진주", "Jinju-si": "진주시",
+    "Chuncheon": "춘천", "Chuncheon-si": "춘천시", "Wonju": "원주", "Wonju-si": "원주시", "Gangneung": "강릉", "Gangneung-si": "강릉시", "Mokpo": "목포", "Yeosu": "여수",
+    "Suncheon": "순천", "Gyeongju": "경주", "Gyeongju-si": "경주시", "Jeju": "제주", "Jeju City": "제주시", "Jeju-si": "제주시", "Seogwipo": "서귀포", "Seogwipo-si": "서귀포시"]
+func koreanCity(_ s: String) -> String { CITY_KO[s] ?? CITY_KO[s.replacingOccurrences(of: " City", with: "")] ?? s }
