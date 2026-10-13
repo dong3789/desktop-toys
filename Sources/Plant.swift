@@ -52,12 +52,14 @@ struct PlantState: Codable {
     var covered: Bool? = nil
     var variantSeed: Int? = nil
     var name: String? = nil
+    var mystery: Bool? = nil
+    var revealed: Bool? = nil
 }
 
 class PlantView: NSView {
     var st = PlantState(); var t: CGFloat = 0; var trashCount = -1; var splash: CGFloat = 0
     var accel: Bool { defaults.bool(forKey: "accel") }
-    var sp: Species? { SPECIES.first { $0.id == st.speciesId } }
+    var sp: Species? { ALL_SPECIES.first { $0.id == st.speciesId } }
     let url: URL = { let d = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("DesktopToys"); try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true); return d.appendingPathComponent("plant.json") }()
     override var mouseDownCanMoveWindow: Bool { false }
     var onChange: (() -> Void)?
@@ -79,7 +81,13 @@ class PlantView: NSView {
     func save() { if let d = try? JSONEncoder().encode(st) { try? d.write(to: url) } }
 
     var receivedLight: Double { outdoorLight * posFactor * ((st.covered ?? false) ? 0.6 : 1) }
-    var minTemp: Double { MIN_TEMP[st.speciesId ?? ""] ?? 5 }
+    var minTemp: Double { MIN_TEMP[st.speciesId ?? ""] ?? ABSURD_MIN[st.speciesId ?? ""] ?? 5 }
+    var isHot: Bool { guard let mx = MAX_TEMP[st.speciesId ?? ""], let T = outdoorTemp else { return false }; return T > mx }
+    /// mystery seeds keep the species secret until the growing stage
+    var secret: Bool { guard let s = sp, st.mystery == true, !st.dead else { return false }; return st.age < s.germDays + (s.matureDays - s.germDays) * 0.35 }
+    var shownSpeciesName: String { secret ? "???" : (sp?.name ?? "") }
+    var shownEmoji: String { secret ? "🎲" : (sp?.emoji ?? "🪴") }
+    var toast: String? = nil; var toastT: CGFloat = 0
     var isCold: Bool { (outdoorTemp ?? 15) < minTemp }
 
     /// Advance the simulation by dt days with a given light level.
@@ -99,6 +107,7 @@ class PlantView: NSView {
             if T < minTemp - 6 && cov { dh -= 0.05 * dt }                               // even covered, hard frost hurts
             if !cov && (windSpeed >= 40 || pm10 >= 150) && posFactor > 0.6 { dh -= 0.03 * dt }   // wind / yellow-dust stress
             if cov && T > 20 && outdoorLight > 0.7 { dh -= 0.06 * dt }                  // overheating under cover
+            if let mx = MAX_TEMP[s.id], T > mx { dh -= (0.08 + 0.02 * (T - mx)) * dt }    // melts / goes soggy
         }
         // recovery: only when nothing is stressing the plant (good moisture, enough light, no cold)
         if dh == 0 && st.moisture >= 0.25 && st.moisture <= 1.0 { dh = recoveryPerDay * dt }
@@ -106,7 +115,7 @@ class PlantView: NSView {
         if st.health <= 0 { st.health = 0; st.dead = true; return }
         if st.health > 0.3 && st.moisture > 0.12 {
             let lf = germinated ? min(1.0, st.lightAvg / s.lightNeed) : 1.0
-            let fert = (st.realDays - st.fertilizedAt) < 14 && germinated ? 1.2 : 1.0
+            let fert = ((st.realDays - st.fertilizedAt) < 14 && germinated ? 1.2 : 1.0) * (COLD_LOVERS.contains(s.id) && (outdoorTemp ?? 15) < 10 ? 1.3 : 1.0)
             st.age += dt * s.speedFactor * (0.4 + 0.6 * lf) * (0.5 + 0.5 * st.health) * fert
         }
     }
@@ -122,8 +131,10 @@ class PlantView: NSView {
     func minuteTick() {
         let mult = accel ? 1440.0 : 1.0   // accelerated: 1 real minute = 1 day
         step(60.0 / 86400 * mult, light: receivedLight)
-        st.lastUpdate = Date().timeIntervalSince1970; useBonus(); checkTrash(); save(); updateTooltip()
+        st.lastUpdate = Date().timeIntervalSince1970; useBonus(); checkTrash(); checkReveal(); save(); updateTooltip()
     }
+    func checkReveal() { if st.mystery == true, st.revealed != true, sp != nil, !secret, !st.dead { st.revealed = true; showToast("🎲 정체 공개! \(sp!.emoji) \(sp!.name)" + (ABSURD_RARITY[sp!.id].map { " " + $0 } ?? "")) } }
+    func showToast(_ s: String) { toast = s; toastT = 6 }
     func checkTrash() {
         let p = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash").path
         guard let items = try? FileManager.default.contentsOfDirectory(atPath: p) else { return }
@@ -134,7 +145,7 @@ class PlantView: NSView {
 
     // MARK: actions
     var recoveryPerDay: Double { [0.08, 0.12, 0.5][min(2, max(0, growthSpeed))] }
-    var plantName: String { st.name ?? sp?.name ?? "화분" }
+    var plantName: String { st.name ?? (secret ? "미스터리 씨앗" : sp?.name ?? "화분") }
     /// Korean subject particle 이/가 after the name
     var nameSubj: String { guard let ch = plantName.unicodeScalars.last?.value, ch >= 0xAC00, ch <= 0xD7A3 else { return plantName + "가" }; return plantName + ((ch - 0xAC00) % 28 == 0 ? "가" : "이") }
     func askName(default d: String) -> String? {
@@ -158,8 +169,8 @@ class PlantView: NSView {
         }
         reset()
     }
-    @objc func rename() { guard let s = sp else { return }; if let n = askName(default: s.name) { st.name = n } else if st.name == nil { return }; save(); updateTooltip() }
-    func plant(_ s: Species) { st = PlantState(); st.speciesId = s.id; st.variantSeed = Int.random(in: 1...Int(Int32.max)); st.lastUseDay = dayIndex(); st.name = Bundle.main.bundleIdentifier != nil ? askName(default: s.name) : nil; save(); updateTooltip() }
+    @objc func rename() { guard let s = sp else { return }; if let n = askName(default: secret ? "미스터리 씨앗" : s.name) { st.name = n } else if st.name == nil { return }; save(); updateTooltip() }
+    func plant(_ s: Species, mystery: Bool = false) { st = PlantState(); st.speciesId = s.id; if mystery { st.mystery = true }; st.variantSeed = Int.random(in: 1...Int(Int32.max)); st.lastUseDay = dayIndex(); st.name = Bundle.main.bundleIdentifier != nil ? askName(default: mystery ? "미스터리 씨앗" : s.name) : nil; save(); updateTooltip() }
     func reset() { st = PlantState(); save(); updateTooltip() }
     @objc func water() {
         st.moisture = min(1.6, st.moisture + 0.7); splash = 1.5
@@ -177,6 +188,7 @@ class PlantView: NSView {
     @objc func toggleCover() { st.covered = !(st.covered ?? false); save(); updateTooltip() }
     @objc func toggleWindow() { st.atWindow.toggle(); save(); updateTooltip() }
     @objc func pickSeed(_ m: NSMenuItem) { plant(SPECIES[m.tag]) }
+    @objc func pickMystery() { plant(randomMysterySpecies(), mystery: true) }
     @objc func replant() { reset() }
 
     var stageName: String {
@@ -186,6 +198,7 @@ class PlantView: NSView {
         if st.age < s.germDays + (s.matureDays - s.germDays) * 0.35 { return "새싹" }
         if st.age < s.matureDays { return "성장기" }
         if let v = variantName { return v }
+        if ABSURD.contains(where: { $0.id == s.id }) { return "다 자람" }
         return ["tomato": "열매 맺음", "lettuce": "수확 가능", "echeveria": "다 자란 로제트"][s.id] ?? "꽃 핌"
     }
     func statusLines() -> [String] {
@@ -193,9 +206,9 @@ class PlantView: NSView {
         let moist = st.moisture > 1.0 ? "과습 💦" : st.moisture < 0.12 ? "바싹 마름 🏜️" : st.moisture < 0.35 ? "건조함" : "적당함"
         let lightR = st.lightAvg / s.lightNeed
         let light = lightR < 0.6 ? "부족 🌥️" : lightR < 1 ? "약간 부족" : "충분 ☀️"
-        return [(st.name != nil ? "\(plantName) · " : "") + "\(s.name) · \(stageName)",
+        return [(st.name != nil ? "\(plantName) · " : "") + "\(shownSpeciesName) · \(stageName)",
                 String(format: "흙 수분: %.0f%% (%@)", min(st.moisture, 1.6) * 100, moist),
-                String(format: "빛: %@ · 창 위치 빛 %.0f%% · 필요: %@", light, posFactor*100, s.lightText),
+                String(format: "빛: %@ · 창 위치 빛 %.0f%% · 필요: %@", light, posFactor*100, secret ? "???" : s.lightText),
                 String(format: "건강: %.0f%% · 실수 %d회", st.health * 100, st.mistakes),
                 String(format: "기온: %@ (최저 %.0f°C) · 덮개 %@", outdoorTemp.map { String(format: "%.0f°C", $0) } ?? "?", minTemp, (st.covered ?? false) ? "덮음" : "없음"),
                 st.age >= s.matureDays ? String(format: "심은 지 %.1f일 · 다 자랐어요!", st.realDays) : String(format: "심은 지 %.1f일 · 다 자라기까지 약 %.1f일", st.realDays, s.realDaysLeft(st.age)),
@@ -205,16 +218,21 @@ class PlantView: NSView {
         guard let s = sp else { return "" }
         if st.dead { return "다시 심어보세요. 이번엔 가이드를 따라봐요!" }
         let cov = st.covered ?? false
+        if isCold && !cov, let ct = COLD_TIP[s.id] { return ct }
         if isCold && !cov { return String(format: "%@ 추워해요(%.0f°C, 최저 %.0f°C). 덮어 주세요!", nameSubj, outdoorTemp ?? 0, minTemp) }
         if cov && !isCold && (outdoorTemp ?? 0) > 15 { return "따뜻해요. 덮개를 치워 주세요." }
+        if isHot { return HEAT_TIP[s.id] ?? "너무 더워요. 선선해지면 회복돼요." }
         if !cov && windSpeed >= 40 { return "바람이 세요. 덮개를 덮어 보호해 주세요." }
         if !cov && pm10 >= 150 { return "황사가 심해요. 덮개를 덮어 주세요." }
         if st.age >= s.germDays && outdoorLight > 0 && posFactor < 0.6 { return "\(nameSubj) 그늘에 있어요. 햇빛 자리로 옮겨 주세요." }
+        if st.moisture > 1.0, let so = SOGGY_TIP[s.id] { return so }
         if st.moisture > 1.0 { return s.id == "echeveria" ? "과습 상태! 흙이 완전히 마를 때까지 물을 주지 마세요." : "\(nameSubj) 물에 잠겼어요. 흙이 마를 때까지 기다리세요." }
         if st.moisture < 0.3 { return "\(nameSubj) 목말라해요. 지금 물을 흠뻑 주세요." }
         if st.age >= s.germDays && st.lightAvg < s.lightNeed * 0.8 { return posFactor > 0.85 ? "오늘은 빛이 약해요. 날씨가 개면 회복돼요." : "빛이 부족해요. 화분을 창 가운데로 옮겨주세요." }
         if st.health < 0.99 { return String(format: "%@ 회복 중이에요 (하루 약 +%.0f%%). 지금처럼만 돌봐 주세요.", nameSubj, recoveryPerDay * 100) }
-        if st.age < s.germDays { return "발아 전에는 흙을 촉촉하게만 유지하세요." }
+        if st.age < s.germDays { return st.mystery == true ? "무엇이 자랄까요? 🎲 흙을 촉촉하게 유지해 주세요." : "발아 전에는 흙을 촉촉하게만 유지하세요." }
+        if secret { return ["새싹이 뭔가 수상해요… 🤔", "정체는 조금 더 자라면 공개돼요!", "잎에서 묘하게 맛있는 냄새가 나요…?"][Int(st.realDays * 3) % 3] }
+        if COLD_LOVERS.contains(s.id) && (outdoorTemp ?? 15) < 10 { return "\(nameSubj) 추운 날씨에 신나게 자라요 ❄️" }
         return s.tips[Int(st.realDays) % s.tips.count]
     }
     var badge: String? {
@@ -234,6 +252,7 @@ class PlantView: NSView {
         var dex = defaults.dictionary(forKey: "dex") as? [String: Int] ?? [:]; dex[name + (st.name != nil ? " — \(plantName)" : ""), default: 0] += 1; defaults.set(dex, forKey: "dex")
         if ["lettuce", "sunflower"].contains(s.id) { reset() }        // annuals: harvest ends the plant
         else { st.age = s.germDays + (s.matureDays - s.germDays) * 0.55; st.variantSeed = Int.random(in: 1...Int(Int32.max)); save() }
+        if let l = HARVEST_LINES[s.id]?.randomElement() { showToast(l) } else { showToast("🧺 \(name) 수확!") }
         splash = 1; updateTooltip()
     }
     func updateTooltip() { toolTip = statusLines().joined(separator: "\n"); onChange?() }
@@ -255,7 +274,8 @@ class PlantView: NSView {
         if sp == nil || st.dead {
             if st.dead { m.addItem(withTitle: "🪦 치우고 다시 심기", action: #selector(replant), keyEquivalent: "").target = self }
             if sp == nil { for (i, s) in SPECIES.enumerated() {
-                let it = m.addItem(withTitle: "\(s.emoji) \(s.name) 씨앗 심기 (약 \(String(format: "%.0f", s.matureDays / s.speedFactor))일, 물 \(String(format: s.dryDays < 1 ? "%.0f시간" : "%.1f일", s.dryDays < 1 ? s.dryDays * 24 : s.dryDays)) 간격)", action: #selector(pickSeed(_:)), keyEquivalent: ""); it.tag = i; it.target = self } }
+                let it = m.addItem(withTitle: "\(s.emoji) \(s.name) 씨앗 심기 (약 \(String(format: "%.0f", s.matureDays / s.speedFactor))일, 물 \(String(format: s.dryDays < 1 ? "%.0f시간" : "%.1f일", s.dryDays < 1 ? s.dryDays * 24 : s.dryDays)) 간격)", action: #selector(pickSeed(_:)), keyEquivalent: ""); it.tag = i; it.target = self }
+                m.addItem(withTitle: "🎲 랜덤 씨앗 (무엇이 자랄지 몰라요!)", action: #selector(pickMystery), keyEquivalent: "").target = self }
         } else {
             if isMature { m.addItem(withTitle: "🧺 수확하기 — \(variantName ?? "")", action: #selector(harvest), keyEquivalent: "").target = self }
             m.addItem(withTitle: "✏️ 이름 바꾸기…", action: #selector(rename), keyEquivalent: "").target = self
@@ -348,7 +368,7 @@ class PlantView: NSView {
                     let tr = NSAffineTransform(); tr.translateX(by: base.x, yBy: base.y + 4 + rr*0.25); tr.scaleX(by: 1, yBy: 0.45 * (1 - wilt*0.5)); tr.rotate(byRadians: a); lp.transform(using: tr as AffineTransform); lp.fill() } }
                 if st.age >= s.matureDays && !dead, let v = variant { v.drawBloom(tip: NSPoint(x: base.x, y: base.y + 4 + rr*0.3), t: t) }
             } else {
-                let tall: CGFloat = ["sunflower": 105, "tomato": 85, "rose": 70, "basil": 60, "lettuce": 30][s.id] ?? 60
+                let tall: CGFloat = ["sunflower": 105, "tomato": 85, "rose": 70, "basil": 60, "lettuce": 30, "unicorn": 70, "maratang": 62, "pizza": 66, "cat": 62, "dalgona": 72, "hotteok": 74, "bungeoppang": 76, "soychicken": 76, "yeopddeok": 76, "dakkochi": 66][s.id] ?? 60
                 let stemH = 12 + tall*p
                 let tip = NSPoint(x: cx + sway + wilt*28, y: base.y + stemH*(1 - wilt*0.4))
                 leaf.setStroke(); let sp2 = NSBezierPath(); sp2.move(to: base); sp2.curve(to: tip, controlPoint1: NSPoint(x: cx, y: base.y + stemH*0.5), controlPoint2: NSPoint(x: tip.x - wilt*10, y: tip.y)); sp2.lineWidth = s.id == "sunflower" ? 5 : 3.5; sp2.lineCapStyle = .round; sp2.stroke()
@@ -360,6 +380,7 @@ class PlantView: NSView {
                     let tr = NSAffineTransform(); tr.translateX(by: pt.x, yBy: pt.y); tr.rotate(byDegrees: side*(35 + wilt*55) - sway)
                     let lp = NSBezierPath(ovalIn: NSRect(x: side > 0 ? 0 : -sz*1.6, y: -sz*0.35, width: sz*1.6, height: sz*0.75)); lp.transform(using: tr as AffineTransform); lp.fill()
                 }
+                if !dead && !secret && st.age < s.matureDays && ABSURD.contains(where: { $0.id == s.id }), let v = variant { var pv = v; pv.color = 0; pv.deco = 0; pv.face = 0; pv.drawAbsurd(tip: tip, t: t, k: 0.35 + 0.35 * CGFloat((st.age - s.germDays) / (s.matureDays - s.germDays))) }
                 if st.age >= s.matureDays && !dead, let v = variant { v.drawBloom(tip: s.id == "lettuce" ? NSPoint(x: tip.x, y: base.y + 10) : tip, t: t) }
             }
         }
@@ -373,15 +394,28 @@ class PlantView: NSView {
         if splash > 0 { NSColor(calibratedRed: 0.4, green: 0.7, blue: 1, alpha: min(1, splash)).setFill()
             for k in 0..<5 { NSBezierPath(ovalIn: NSRect(x: cx - 20 + CGFloat(k)*10, y: 74 + CGFloat(k*13 % 30) + splash*40, width: 4, height: 6)).fill() } }
         // single action badge (no text)
-        if let b = badge {
+        if let b = badge ?? (isHot ? "🔥" : nil) {
             let k = max(1, 15 / (18 * sceneScale(self)))      // keep badge ≥ ~15pt on screen
             let bx = cx + 30, by: CGFloat = 76 + 9*(k - 1) + 2*sin(t*2)
             let tr = NSAffineTransform(); tr.translateX(by: bx, yBy: by); tr.scale(by: k); tr.translateX(by: -bx, yBy: -by); NSGraphicsContext.saveGraphicsState(); tr.concat()
-            let (sym, col): (String, NSColor) = ["🥶": ("snowflake", Palette.cold), "💧": ("drop.fill", Palette.dry), "💨": ("wind", Palette.wind), "☀️": ("sun.max.fill", Palette.sun)][b] ?? ("exclamationmark", .gray)
+            let (sym, col): (String, NSColor) = ["🥶": ("snowflake", Palette.cold), "💧": ("drop.fill", Palette.dry), "💨": ("wind", Palette.wind), "☀️": ("sun.max.fill", Palette.sun), "🔥": ("thermometer.sun.fill", NSColor.systemOrange)][b] ?? ("exclamationmark", .gray)
             NSColor(white: 0, alpha: 0.12).setFill(); NSBezierPath(roundedRect: NSRect(x: bx-9, y: by-10, width: 18, height: 18), xRadius: 9, yRadius: 9).fill()
             NSColor(white: 1, alpha: 0.92).setFill(); NSBezierPath(roundedRect: NSRect(x: bx-9, y: by-9, width: 18, height: 18), xRadius: 9, yRadius: 9).fill()
             drawSymbol(sym, NSRect(x: bx-5.5, y: by-5.5, width: 11, height: 11), col.blended(withFraction: 0.15, of: .black) ?? col)
             NSGraphicsContext.restoreGraphicsState()
         }
+        if let msg = toast, toastT > 0 {
+            if t - lastToastTick > 0 { toastT -= min(0.2, t - lastToastTick) }; lastToastTick = t
+            let a: [NSAttributedString.Key: Any] = [.font: cute(9.5), .foregroundColor: NSColor(white: 0.15, alpha: 1)]
+            let ns = msg as NSString, maxW: CGFloat = bounds.width - 8
+            var sz = ns.boundingRect(with: NSSize(width: maxW - 12, height: 100), options: [.usesLineFragmentOrigin], attributes: a).size; sz.width = ceil(sz.width); sz.height = ceil(sz.height)
+            let alpha = min(1, toastT), box = NSRect(x: cx - (sz.width + 12)/2, y: 196 + (1 - alpha) * 6, width: sz.width + 12, height: sz.height + 8)
+            NSGraphicsContext.saveGraphicsState(); NSGraphicsContext.current?.cgContext.setAlpha(alpha)
+            NSColor(white: 1, alpha: 0.95).setFill(); NSBezierPath(roundedRect: box, xRadius: 8, yRadius: 8).fill()
+            ns.draw(with: NSRect(x: box.minX + 6, y: box.minY + 4, width: sz.width, height: sz.height), options: [.usesLineFragmentOrigin], attributes: a)
+            NSGraphicsContext.restoreGraphicsState()
+            if toastT <= 0 { toast = nil }
+        }
     }
+    var lastToastTick: CGFloat = 0
 }

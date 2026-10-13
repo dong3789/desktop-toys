@@ -11,7 +11,7 @@ func makeScene() -> (WeatherView, PlantView) {
     func update() {
         // light depends on whether the pot sits in the moving sun patch on the sill
         if let px = wv.sunPatchCenter { let d = abs(pv.frame.midX - px) / (wv.patchW / 2 + 25); pv.posFactor = d < 0.6 ? 1 : max(0.3, 1 - 0.7 * Double((d - 0.6) / 0.6)) } else { pv.posFactor = 1 }
-        let s = pv.sp.map { "\($0.emoji) \($0.name) · \(pv.stageName) · 💧\(Int(min(pv.st.moisture, 1.6)*100))% ❤️\(Int(pv.st.health*100))% ☀️\(Int(pv.posFactor*100))%" + (pv.isCold && !(pv.st.covered ?? false) ? " 🥶" : "") + ((pv.st.covered ?? false) ? " 🫙" : "") } ?? "🪴 화분을 클릭해 씨앗을 심어보세요"
+        let s = pv.sp.map { _ in "\(pv.shownEmoji) \(pv.shownSpeciesName) · \(pv.stageName) · 💧\(Int(min(pv.st.moisture, 1.6)*100))% ❤️\(Int(pv.st.health*100))% ☀️\(Int(pv.posFactor*100))%" + (pv.isCold && !(pv.st.covered ?? false) ? " 🥶" : "") + ((pv.st.covered ?? false) ? " 🫙" : "") } ?? "🪴 화분을 클릭해 씨앗을 심어보세요"
         wv.plantLabel = s
     }
     let saved = defaults.object(forKey: "potX") as? Double ?? Double(g.midX - pw/2)
@@ -19,7 +19,7 @@ func makeScene() -> (WeatherView, PlantView) {
     pv.dragClamp = clamp
     pv.onMove = { defaults.set(Double(pv.frame.origin.x), forKey: "potX"); update(); pv.updateTooltip() }
     pv.onChange = { update() }
-    wv.plantInfo = { pv.sp.map { ((pv.st.name != nil ? "\(pv.plantName) · " : "") + (pv.variantName ?? "\($0.name) · \(pv.stageName)") + (pv.st.dead ? "" : String(format: " · %.0f일째", pv.st.realDays)), pv.st.moisture, pv.st.health, pv.posFactor * outdoorLight / max(0.01, $0.lightNeed * 2)) } ?? ("화분을 클릭해 씨앗을 심어보세요", 0, 0, 0) }
+    wv.plantInfo = { pv.sp.map { ((pv.st.name != nil ? "\(pv.plantName) · " : "") + (pv.variantName ?? "\(pv.shownSpeciesName) · \(pv.stageName)") + (pv.st.dead ? "" : String(format: " · %.0f일째", pv.st.realDays)), pv.st.moisture, pv.st.health, pv.posFactor * outdoorLight / max(0.01, $0.lightNeed * 2)) } ?? ("화분을 클릭해 씨앗을 심어보세요", 0, 0, 0) }
     wv.addSubview(pv, positioned: .below, relativeTo: wv.card); update(); pv.updateTooltip()
     return (wv, pv)
 }
@@ -238,6 +238,31 @@ if let i = CommandLine.arguments.firstIndex(of: "--fruits"), i+1 < CommandLine.a
             let a: [NSAttributedString.Key: Any] = [.font: cute(11.5), .foregroundColor: NSColor(white: 0.15, alpha: 1)]
             let sz = n.size(withAttributes: a); n.draw(at: NSPoint(x: CGFloat(col)*cw + (cw - sz.width)/2, y: oy + 4), withAttributes: a)
         }
+    }
+    img.unlockFocus(); let rep = NSBitmapImageRep(data: img.tiffRepresentation!)!
+    try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: CommandLine.arguments[i+1])); exit(0)
+}
+if let i = CommandLine.arguments.firstIndex(of: "--mystery"), i+1 < CommandLine.arguments.count {
+    // Contact sheet of mature absurd plants: one common + one rare/legendary each, plus a growing preview & hidden sprout
+    var cells: [(String, Double, Int, String)] = []
+    for (si, sp) in ABSURD.enumerated() {
+        let wantR = sp.id == "unicorn" ? 2 : 1
+        var c = 0, r = 0, seed = 1 + si * 37; while (c == 0 || r == 0) && seed < 100000 { let v = Variant(seed: seed, speciesId: sp.id); if v.rarity == 0 && c == 0 && v.face > 0 { c = seed }; if v.rarity == wantR && r == 0 && (v.deco > 0 || wantR == 2) { r = seed }; seed += 1 }
+        cells.append((sp.id, sp.matureDays + 1, c, Variant(seed: c, speciesId: sp.id).name(sp.name))); cells.append((sp.id, sp.matureDays + 1, r, Variant(seed: r, speciesId: sp.id).name(sp.name)))
+    }
+    let cols = 6, cw: CGFloat = 170, ch: CGFloat = 250, rows = (cells.count + 2 + cols - 1) / cols
+    cells.append(("maratang", 8, 5, "??? 새싹 (숨김)")); cells.append(("unicorn", 40, 5, "성장기 (정체 공개)"))
+    let img = NSImage(size: NSSize(width: CGFloat(cols)*cw, height: CGFloat(rows)*ch)); img.lockFocus()
+    NSColor(calibratedRed: 0.86, green: 0.9, blue: 0.94, alpha: 1).setFill(); NSRect(origin: .zero, size: img.size).fill()
+    for (k, (id, age, sd, title)) in cells.enumerated() {
+        let pv = PlantView(frame: NSRect(x: 0, y: 0, width: 120, height: 240))
+        pv.st = PlantState(); pv.st.speciesId = id; pv.st.age = age; pv.st.health = 1; pv.st.moisture = 0.7; pv.st.variantSeed = sd; pv.st.mystery = true; pv.posFactor = 1; outdoorTemp = 18
+        pv.t = CGFloat(k) * 0.7; let r = pv.bitmapImageRepForCachingDisplay(in: pv.bounds)!; pv.cacheDisplay(in: pv.bounds, to: r)
+        let col = k % cols, row = k / cols, ox = CGFloat(col)*cw + 25, oy = CGFloat(rows - 1 - row)*ch + 10
+        r.draw(in: NSRect(x: ox, y: oy + 18, width: 120, height: 240 - 18))
+        let label = (pv.secret ? "\(pv.shownEmoji) " : "") + title as NSString
+        let a: [NSAttributedString.Key: Any] = [.font: cute(11.5), .foregroundColor: NSColor(white: 0.15, alpha: 1)]
+        let sz = label.size(withAttributes: a); label.draw(at: NSPoint(x: CGFloat(col)*cw + (cw - sz.width)/2, y: oy + 4), withAttributes: a)
     }
     img.unlockFocus(); let rep = NSBitmapImageRep(data: img.tiffRepresentation!)!
     try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: CommandLine.arguments[i+1])); exit(0)

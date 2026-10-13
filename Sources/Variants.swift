@@ -11,9 +11,10 @@ struct Variant {
         func next() -> Double { x = x &+ 0x9E3779B97F4A7C15; var z = x; z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9; z = (z ^ (z >> 27)) &* 0x94D049BB133111EB; z ^= z >> 31; return Double(z >> 11) / Double(1 << 53) }
         func pick(_ a: [Int]) -> Int { a[min(a.count - 1, Int(next() * Double(a.count)))] }
         let r = next(); rarity = r < 0.05 ? 2 : r < 0.27 ? 1 : 0
-        let shapes: [String: [Int]] = ["tomato": [0, 1, 2, 3, 4, 5, 6], "sunflower": [0, 1, 2, 4], "rose": [0, 1], "lettuce": [7], "basil": [1], "echeveria": [0]]
-        let hasFace = ["tomato", "sunflower", "lettuce", "echeveria"].contains(speciesId)
-        let canDeco = ["tomato", "sunflower", "lettuce"].contains(speciesId)
+        let shapes: [String: [Int]] = ["tomato": [0, 1, 2, 3, 4, 5, 6], "sunflower": [0, 1, 2, 4], "rose": [0, 1], "lettuce": [7], "basil": [1], "echeveria": [0], "dalgona": [0, 1, 2]]
+        let absurd = ABSURD.contains { $0.id == speciesId }
+        let hasFace = absurd || ["tomato", "sunflower", "lettuce", "echeveria"].contains(speciesId)
+        let canDeco = absurd || ["tomato", "sunflower", "lettuce"].contains(speciesId)
         shape = pick(shapes[speciesId] ?? [0])
         if hasFace && next() < 0.65 { face = pick([1, 2, 3]) }
         if speciesId == "tomato" && shape == 0 && face == 0 { shape = pick([1, 2, 3, 6]) }
@@ -31,7 +32,7 @@ struct Variant {
         if face > 0 { p.append(["", "웃는", "깜짝 놀란", "졸린"][face]) }
         if color > 0 { p.append(["", "줄무늬", "무지개", "황금", "파란", "까만", "초록"][color]) }
         if deco > 0 { p.append(["", "콧수염", "선글라스", "왕관"][deco]) }
-        if shape > 0 { p.append(speciesId == "sunflower" ? ["", "하트", "소용돌이", "", "꼬마 다둥이"][min(shape, 4)] : ["", "하트", "별", "네모", "꼬마", "왕", "쌍둥이", "뽀글머리"][shape]) }
+        if shape > 0 && speciesId == "dalgona" { p.append(["", "하트", "별"][shape]) } else if shape > 0 { p.append(speciesId == "sunflower" ? ["", "하트", "소용돌이", "", "꼬마 다둥이"][min(shape, 4)] : ["", "하트", "별", "네모", "꼬마", "왕", "쌍둥이", "뽀글머리"][shape]) }
         if p.isEmpty { p.append("평범한") }
         return (p.filter { !$0.isEmpty } + [species]).joined(separator: " ") + ["", " ✨희귀", " 🌟전설"][rarity]
     }
@@ -148,7 +149,7 @@ struct Variant {
         case "echeveria":
             if face > 0 { drawFace(NSPoint(x: tip.x, y: tip.y), 7) }
             if deco == 3 { drawCrown(NSPoint(x: tip.x, y: tip.y + 8), 16) }
-        default: break
+        default: drawAbsurd(tip: tip, t: t)
         }
     }
 }
