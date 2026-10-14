@@ -121,7 +121,7 @@ class WeatherView: NSView {
         if let cv = card.subviews.first { cv.frame = card.bounds; cv.bounds = NSRect(origin: .zero, size: size); cv.needsDisplay = true }
     }
     override func viewDidMoveToSuperview() { super.viewDidMoveToSuperview(); layoutCard() }
-    func setHover(_ h: CGFloat) { if h > 0 && hover == 0 { layoutCard() }; hover = h
+    func setHover(_ h: CGFloat) { if h > 0 && hover == 0 { layoutCard() }; hover = h; gaugeAlpha = h; subviews.forEach { if $0 is PlantView { $0.needsDisplay = true } }
         if external { card.isHidden = true; if window != nil { bubble.show(alpha: h, near: window!.frame) } }
         else { bubble.orderOut(nil); card.alphaValue = h; card.isHidden = h <= 0.01 }; (card.subviews.first as? CardView)?.needsDisplay = true }
     override init(frame: NSRect) {

@@ -269,6 +269,23 @@ if let i = CommandLine.arguments.firstIndex(of: "--mystery"), i+1 < CommandLine.
     img.unlockFocus(); let rep = NSBitmapImageRep(data: img.tiffRepresentation!)!
     try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: CommandLine.arguments[i+1])); exit(0)
 }
+if let i = CommandLine.arguments.firstIndex(of: "--gauge"), i+1 < CommandLine.arguments.count {
+    // normal vs hover (covered and uncovered) at 100%
+    windowStyle = 5; potStyle = 6; bgImage = nil
+    var wx = Wx(); wx.code = 0; wx.month = 10; wx.hour = 10.2; wx.temp = 18; wx.wind = 8; currentWx = wx; weatherKnown = true
+    let img = NSImage(size: NSSize(width: 4*340 + 20, height: 420)); img.lockFocus()
+    NSGradient(starting: NSColor(calibratedRed: 0.15, green: 0.14, blue: 0.32, alpha: 1), ending: NSColor(calibratedRed: 0.36, green: 0.26, blue: 0.55, alpha: 1))!.draw(in: NSRect(x: 0, y: 0, width: 4*340 + 20, height: 420), angle: 60)
+    for (k, (cov, hv, title)) in [(false, 0.0, "평소"), (false, 1.0, "마우스 올림"), (true, 0.0, "덮개 · 평소"), (true, 1.0, "덮개 · 마우스 올림")].enumerated() {
+        let (wv, pv) = makeScene(); pv.st = PlantState(); pv.st.speciesId = "basil"; pv.st.age = 30; pv.st.health = 1; pv.st.moisture = 0.7; pv.st.covered = cov; pv.st.variantSeed = 3; outdoorTemp = 18
+        let sv = ScaleView(scene: wv, size: BASE); sv.grip.isHidden = true
+        for _ in 0..<30 { wv.tick() }; wv.layoutCard(); wv.setHover(CGFloat(hv))
+        let r = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(BASE.width), pixelsHigh: Int(BASE.height), bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        sv.cacheDisplay(in: sv.bounds, to: r); r.draw(in: NSRect(x: 20 + CGFloat(k)*340, y: 30, width: BASE.width, height: BASE.height), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
+        (title as NSString).draw(at: NSPoint(x: 24 + CGFloat(k)*340, y: 6), withAttributes: [.font: cute(14), .foregroundColor: NSColor.white])
+    }
+    img.unlockFocus(); let rep = NSBitmapImageRep(data: img.tiffRepresentation!)!
+    try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: CommandLine.arguments[i+1])); exit(0)
+}
 if let i = CommandLine.arguments.firstIndex(of: "--glass"), i+2 < CommandLine.arguments.count {
     // Side-by-side: mockup (left) vs. glass theme render (right, autumn clear 18°C, seedling under cloche) + small-size previews
     let mock = NSImage(contentsOfFile: CommandLine.arguments[i+2])

@@ -412,7 +412,7 @@ class PlantView: NSView {
             NSColor(white: 1, alpha: 0.22).setFill(); d.fill(); NSColor(white: 1, alpha: 0.7).setStroke(); d.lineWidth = 1.5; d.stroke()
             NSColor(white: 1, alpha: 0.5).setFill(); NSBezierPath(ovalIn: NSRect(x: cx-26, y: 110, width: 6, height: 40)).fill()
             NSColor(white: 0.9, alpha: 0.9).setFill(); NSBezierPath(ovalIn: NSRect(x: cx-5, y: 176, width: 10, height: 8)).fill() } }
-        if alwaysInfo { drawGauge(cx) }
+        if gaugeAlpha > 0.01 { NSGraphicsContext.saveGraphicsState(); NSGraphicsContext.current?.cgContext.setAlpha(gaugeAlpha); drawGauge(cx); NSGraphicsContext.restoreGraphicsState() }
         if splash > 0 { NSColor(calibratedRed: 0.4, green: 0.7, blue: 1, alpha: min(1, splash)).setFill()
             for k in 0..<5 { NSBezierPath(ovalIn: NSRect(x: cx - 20 + CGFloat(k)*10, y: 74 + CGFloat(k*13 % 30) + splash*40, width: 4, height: 6)).fill() } }
         // single action badge (no text)

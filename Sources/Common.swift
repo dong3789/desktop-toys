@@ -87,6 +87,8 @@ var windowStyle: Int = defaults.object(forKey: "windowStyle") as? Int ?? 5
 /// Always-on weather text + growth gauge (default on for the glass theme); contact sheets may override
 var alwaysInfoOverride: Bool? = nil
 var alwaysInfo: Bool { alwaysInfoOverride ?? (defaults.object(forKey: "alwaysInfo") as? Bool ?? (windowStyle == 5)) }
+/// Growth gauge opacity: follows the hover card fade
+var gaugeAlpha: CGFloat = 0
 var glassTheme: Bool { windowStyle == 5 }
 /// Soft drop shadow helper
 func withShadow(_ c: NSColor, blur: CGFloat, dy: CGFloat = 0, _ f: () -> Void) { NSGraphicsContext.saveGraphicsState(); let s = NSShadow(); s.shadowColor = c; s.shadowBlurRadius = blur; s.shadowOffset = NSSize(width: 0, height: dy); s.set(); f(); NSGraphicsContext.restoreGraphicsState() }
