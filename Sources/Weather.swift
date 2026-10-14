@@ -134,24 +134,45 @@ class WeatherView: NSView {
         Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in self?.clockTick() }
         for n in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification, NSWorkspace.sessionDidBecomeActiveNotification] {
             NSWorkspace.shared.notificationCenter.addObserver(forName: n, object: nil, queue: .main) { [weak self] _ in
-                self?.lastFetchAttempt = 0; self?.clockTick()
+                self?.asleep = false; self?.scheduleTick(24); self?.lastFetchAttempt = 0; self?.lastTick = CACurrentMediaTime(); self?.clockTick()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 5) { self?.fetch() } } }
+        for n in [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification, NSWorkspace.sessionDidResignActiveNotification] {
+            NSWorkspace.shared.notificationCenter.addObserver(forName: n, object: nil, queue: .main) { [weak self] _ in self?.asleep = true; self?.scheduleTick(0) } }
         fetch()
     }
     required init?(coder: NSCoder) { fatalError() }
 
     var tickTimer: Timer?; var tickFPS: Double = 0; var lastTick = CACurrentMediaTime()
-    /// 24fps while precipitation/storm/hover animate, 8fps for a calm sky (low CPU)
+    /// 24fps while precipitation/storm/hover animate, 6fps for a calm sky (low CPU)
     func scheduleTick(_ f: Double) {
-        guard f != tickFPS else { return }; tickFPS = f; tickTimer?.invalidate()
+        let f = paused ? 0 : f
+        guard f != tickFPS else { return }; tickFPS = f; tickTimer?.invalidate(); tickTimer = nil
+        if f == 0 { return }; lastTick = CACurrentMediaTime()
         let tm = Timer(timeInterval: 1 / f, repeats: true) { [weak self] _ in self?.tick() }; tm.tolerance = 0.2 / f; RunLoop.main.add(tm, forMode: .common); tickTimer = tm
     }
+    var asleep = false
+    var paused: Bool { asleep || (window.map { !$0.occlusionState.contains(.visible) } ?? false) }
+    var occObs: NSObjectProtocol?
+    override func viewDidMoveToWindow() { super.viewDidMoveToWindow()
+        if let o = occObs { NotificationCenter.default.removeObserver(o); occObs = nil }
+        if let w = window { occObs = NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: w, queue: .main) { [weak self] _ in
+            guard let self else { return }; self.scheduleTick(self.wantsFast ? 24 : 4); if !self.paused { self.needsDisplay = true } } } }
+    /// cached frame (wood/glass rim) bitmap; rebuilt only when size/style/theme/scale change
+    var caches: [String: (key: String, img: NSImage)] = [:]
+    func cached(_ key: String, slot: String = "frame", _ draw: () -> Void) -> NSImage {
+        if let c = caches[slot], c.key == key { return c.img }
+        let sc = window?.backingScaleFactor ?? 2, sz = bounds.size
+        let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(sz.width * sc), pixelsHigh: Int(sz.height * sc), bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        rep.size = sz
+        NSGraphicsContext.saveGraphicsState(); NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep); draw(); NSGraphicsContext.restoreGraphicsState()
+        let img = NSImage(size: sz); img.addRepresentation(rep); caches[slot] = (key, img); return img }
     var wantsFast: Bool { let w = wx; return w.precip != .none || w.fog || w.wind >= 25 || flash > 0 || hover != hoverTarget || w.yellowDust }
     func tick() {
         let now = CACurrentMediaTime(); var dt = CGFloat(now - lastTick); lastTick = now; if dt <= 0 || dt > 0.3 { dt = 1/24 }
         let k = dt * 24
-        if window != nil || superview != nil { scheduleTick(wantsFast ? 24 : 8) }
+        if window != nil || superview != nil { scheduleTick(wantsFast ? 24 : 4) }
         t += dt
+        for case let pv as PlantView in subviews where pv.animFPS == 0 { pv.t += dt }
         let w = wx, p = w.precip
         let fall: CGFloat, drift = CGFloat(w.wind) / 4000
         switch p {
@@ -164,7 +185,8 @@ class WeatherView: NSView {
         flash = max(0, flash - 0.08 * k)
         if abs(hover - hoverTarget) > 0.01 { setHover(hover + (hoverTarget - hover) * (1 - pow(0.75, k))) } else if hover != hoverTarget { setHover(hoverTarget) }
         if hover > 0 { (card.subviews.first as? CardView)?.needsDisplay = true; if external { bubble.bubbleView.card.needsDisplay = true } }
-        needsDisplay = true
+        // only the glass animates; frame, sill and text stay put
+        if flash > 0 || p == .storm { needsDisplay = true } else { setNeedsDisplay(glassRect.insetBy(dx: -1, dy: -1)) }
     }
 
     var lastFetchOK: TimeInterval = 0, lastFetchAttempt: TimeInterval = 0
@@ -231,12 +253,15 @@ class WeatherView: NSView {
             (rgb(0.9, 0.86, 0.78), rgb(0.96, 0.93, 0.87), rgb(0.82, 0.77, 0.68)), (rgb(0.78, 0.63, 0.35), rgb(0.93, 0.8, 0.5), rgb(0.62, 0.48, 0.24)), (rgb(0.45, 0.31, 0.21), rgb(0.55, 0.39, 0.27), rgb(0.36, 0.24, 0.16)), (rgb(0.93, 0.92, 0.98, 0.95), rgb(1, 1, 1, 0.97), rgb(0.82, 0.8, 0.9, 0.95))]
         let (wood, woodHi, woodLo) = pal[min(windowStyle, pal.count - 1)]
         let inner = innerRect, glass = glassRect, outer = inner.insetBy(dx: -6, dy: -6)
+        let fkey = "\(bounds.size)|\(glassTheme)|\(windowStyle)|\(window?.backingScaleFactor ?? 0)|\(designRound)"
+        cached(fkey) {
         if glassTheme { drawGlassFrame(outer) } else {
         NSColor(white: 0, alpha: 0.12).setFill(); let sh0 = windowShape(outer, 0); sh0.transform(using: AffineTransform(translationByX: 0, byY: -2)); sh0.fill()
         NSGradient(starting: woodLo, ending: woodHi)!.draw(in: windowShape(outer, 0), angle: 90) }
         if windowStyle == 3 { let ring = windowShape(outer, 0); for k in 0..<10 { let a = CGFloat(k) * .pi / 5, b = ring.bounds, rr = b.width/2 - 5
             woodLo.setFill(); oval(b.midX + cos(a)*rr, b.midY + sin(a)*rr, 4.5, 4.5); woodHi.setFill(); oval(b.midX + cos(a)*rr - 0.6, b.midY + sin(a)*rr + 0.6, 2, 2) } }
         if !glassTheme { NSColor(white: 0, alpha: 0.16).setFill(); windowShape(outer, 10).fill() }   // inner recess
+        }.draw(in: bounds, from: .zero, operation: .sourceOver, fraction: 1)
         let glassShape = windowShape(outer, windowStyle == 3 ? 12 : 12)
         NSGraphicsContext.saveGraphicsState(); glassShape.addClip()
         // sky
@@ -427,12 +452,14 @@ class WeatherView: NSView {
             let beamCol = mix(rgb(1, 0.95, 0.6), rgb(1, 0.65, 0.35), w.golden)
             beamCol.withAlphaComponent(0.08*a).setFill()
             let beam = NSBezierPath(); beam.move(to: NSPoint(x: px - patchW/2 + 20, y: glass.maxY)); beam.line(to: NSPoint(x: px + patchW/2 + 20, y: glass.maxY)); beam.line(to: NSPoint(x: px + patchW/2, y: sillTop)); beam.line(to: NSPoint(x: px - patchW/2, y: sillTop)); beam.close(); beam.fill() }
+        if glass.contains(r) { return }   // glass-only tick: sill and text untouched
         let sill = NSRect(x: inner.minX-14, y: inner.minY-18, width: inner.width+28, height: 14)
         if glassTheme { drawGlassSill(sill) } else {
         NSColor(white: 0, alpha: 0.14).setFill(); NSBezierPath(roundedRect: sill.offsetBy(dx: 0, dy: -3), xRadius: R(6), yRadius: R(6)).fill()
         NSGradient(starting: woodLo, ending: woodHi)!.draw(in: NSBezierPath(roundedRect: sill, xRadius: R(6), yRadius: R(6)), angle: 90)
         woodHi.withAlphaComponent(0.8).setFill(); NSBezierPath(roundedRect: NSRect(x: sill.minX + 3, y: sill.maxY - 2.5, width: sill.width - 6, height: 1.5), xRadius: 1, yRadius: 1).fill() }
-        if alwaysInfo { drawInfo(w) }
+        if alwaysInfo { let ik = "\(fkey)|\(sceneScale(self))|\(w.desc)|\(w.symbol)|\(temp.map { Int($0.rounded()) } ?? -999)|\(poeticLine)"
+            cached(ik, slot: "info") { drawInfo(w) }.draw(in: bounds, from: .zero, operation: .sourceOver, fraction: 1) }
         // (no plate on the sill: the soft beam alone shows the sunny spot)
     }
 }

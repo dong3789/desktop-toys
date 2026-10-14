@@ -79,16 +79,18 @@ class PlantView: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
     var animTimer: Timer?; var animFPS: Double = 0; var lastAnim = CACurrentMediaTime()
-    /// 20fps for splashes/toasts/hover fades, 8fps for gentle idle sway
+    /// 20fps for splashes/toasts/hover fades/shivering; idle sway is driven by the window tick
     func scheduleAnim(_ f: Double) {
-        guard f != animFPS else { return }; animFPS = f; animTimer?.invalidate()
+        guard f != animFPS else { return }; animFPS = f; animTimer?.invalidate(); animTimer = nil
+        guard f > 0 else { return }   // idle: the window redraw (WeatherView tick) advances t and repaints us
+        lastAnim = CACurrentMediaTime()
         let tm = Timer(timeInterval: 1 / f, repeats: true) { [weak self] _ in self?.animTick() }; tm.tolerance = 0.2 / f; RunLoop.main.add(tm, forMode: .common); animTimer = tm
     }
     func animTick() {
         let now = CACurrentMediaTime(), dt = CGFloat(min(0.3, now - lastAnim)); lastAnim = now
         t += dt; if splash > 0 { splash -= dt }; needsDisplay = true
         let busy = splash > 0 || toast != nil || (gaugeAlpha > 0.01 && gaugeAlpha < 0.99) || (isCold && !(st.covered ?? false))
-        scheduleAnim(busy ? 20 : 8)
+        scheduleAnim(busy ? 20 : 0)
     }
     func save() { if let d = try? JSONEncoder().encode(st) { try? d.write(to: url) } }
 
@@ -267,7 +269,7 @@ class PlantView: NSView {
         if let l = HARVEST_LINES[s.id]?.randomElement() { showToast(l) } else { showToast("🧺 \(name) 수확!") }
         splash = 1; updateTooltip()
     }
-    func updateTooltip() { toolTip = statusLines().joined(separator: "\n"); onChange?() }
+    func updateTooltip() { toolTip = statusLines().joined(separator: "\n"); onChange?(); scheduleAnim(20) }
 
     var dragClamp: ((CGFloat) -> CGFloat)?
     override func mouseDown(with e: NSEvent) { dragStart = NSEvent.mouseLocation; dragged = false; origX = frame.origin.x }
