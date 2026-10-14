@@ -82,10 +82,16 @@ func cute(_ size: CGFloat, _ weight: NSFont.Weight = .semibold) -> NSFont {
 
 // MARK: design settings (persisted; contact sheets may override in memory)
 var designRound: Bool = defaults.object(forKey: "roundStyle") as? Bool ?? true
-var potStyle: Int = defaults.integer(forKey: "potStyle")
-var windowStyle: Int = defaults.integer(forKey: "windowStyle")
-let POT_NAMES = ["테라코타", "하얀 도자기", "파스텔 동글이", "라탄 바구니", "고양이 화분", "콘크리트"]
-let WINDOW_NAMES = ["나무 4칸 창", "모던 화이트", "아치형 유럽 창", "둥근 선창", "한옥 창호지 창"]
+var potStyle: Int = defaults.object(forKey: "potStyle") as? Int ?? 6
+var windowStyle: Int = defaults.object(forKey: "windowStyle") as? Int ?? 5
+/// Always-on weather text + growth gauge (default on for the glass theme); contact sheets may override
+var alwaysInfoOverride: Bool? = nil
+var alwaysInfo: Bool { alwaysInfoOverride ?? (defaults.object(forKey: "alwaysInfo") as? Bool ?? (windowStyle == 5)) }
+var glassTheme: Bool { windowStyle == 5 }
+/// Soft drop shadow helper
+func withShadow(_ c: NSColor, blur: CGFloat, dy: CGFloat = 0, _ f: () -> Void) { NSGraphicsContext.saveGraphicsState(); let s = NSShadow(); s.shadowColor = c; s.shadowBlurRadius = blur; s.shadowOffset = NSSize(width: 0, height: dy); s.set(); f(); NSGraphicsContext.restoreGraphicsState() }
+let POT_NAMES = ["테라코타", "하얀 도자기", "파스텔 동글이", "라탄 바구니", "고양이 화분", "콘크리트", "말랑 도자기"]
+let WINDOW_NAMES = ["나무 4칸 창", "모던 화이트", "아치형 유럽 창", "둥근 선창", "한옥 창호지 창", "글래스 아치"]
 let appSupportDir: URL = { let d = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("DesktopToys"); try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true); return d }()
 var bgImage: NSImage? = defaults.string(forKey: "bgPath").flatMap { NSImage(contentsOfFile: $0) }
 /// Corner radius for UI chrome: crisp vs. big & pill-like
@@ -95,7 +101,7 @@ func windowShape(_ r0: NSRect, _ d: CGFloat) -> NSBezierPath {
     let r = r0.insetBy(dx: d, dy: d)
     switch windowStyle {
     case 3: let s = min(r.width, r.height); return NSBezierPath(ovalIn: NSRect(x: r.midX - s/2, y: r.maxY - s, width: s, height: s))
-    case 2:
+    case 2, 5:
         let rad = r.width / 2, br = max(0, R(14) - d * 0.4), p = NSBezierPath()
         p.move(to: NSPoint(x: r.minX, y: r.maxY - rad)); p.line(to: NSPoint(x: r.minX, y: r.minY + br))
         p.appendArc(withCenter: NSPoint(x: r.minX + br, y: r.minY + br), radius: br, startAngle: 180, endAngle: 270)

@@ -7,7 +7,7 @@ func makeScene() -> (WeatherView, PlantView) {
     let pw: CGFloat = 120
     let pv = PlantView(frame: NSRect(x: 0, y: wv.sillTop - 22, width: pw, height: 240))
     let g = wv.glassRect
-    let clamp: (CGFloat) -> CGFloat = { min(max($0, g.minX - 22), g.maxX - pw + 22) }
+    let clamp: (CGFloat) -> CGFloat = { let g = wv.glassRect; return min(max($0, g.minX - 22), g.maxX - pw + 22) }
     func update() {
         // light depends on whether the pot sits in the moving sun patch on the sill
         if let px = wv.sunPatchCenter { let d = abs(pv.frame.midX - px) / (wv.patchW / 2 + 25); pv.posFactor = d < 0.6 ? 1 : max(0.3, 1 - 0.7 * Double((d - 0.6) / 0.6)) } else { pv.posFactor = 1 }
@@ -129,8 +129,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         d.addItem(.separator()); header("배경")
         let b1 = d.addItem(withTitle: "   배경 사진 선택…", action: #selector(pickBG), keyEquivalent: ""); b1.target = self
         let b2 = d.addItem(withTitle: "   기본 풍경으로", action: #selector(clearBG), keyEquivalent: ""); b2.target = self; b2.state = bgImage == nil ? .on : .off
+        d.addItem(.separator()); let ai = d.addItem(withTitle: "날씨 정보 항상 표시", action: #selector(toggleInfo), keyEquivalent: ""); ai.target = self; ai.state = alwaysInfo ? .on : .off
     }
-    func designChanged() { buildDesignMenu(); weatherView.layoutCard(); weatherView.needsDisplay = true; pv.needsDisplay = true; weatherView.bubble.bubbleView.needsDisplay = true }
+    @objc func toggleInfo() { defaults.set(!alwaysInfo, forKey: "alwaysInfo"); designChanged() }
+    func designChanged() { if let c = pv.dragClamp { pv.setFrameOrigin(NSPoint(x: c(pv.frame.origin.x), y: pv.frame.origin.y)); pv.onMove?() }; buildDesignMenu(); weatherView.layoutCard(); weatherView.needsDisplay = true; pv.needsDisplay = true; weatherView.bubble.bubbleView.needsDisplay = true }
     @objc func setRound(_ it: NSMenuItem) { designRound = it.tag == 1; defaults.set(designRound, forKey: "roundStyle"); designChanged() }
     @objc func setPot(_ it: NSMenuItem) { potStyle = it.tag; defaults.set(potStyle, forKey: "potStyle"); designChanged() }
     @objc func setWindow(_ it: NSMenuItem) { windowStyle = it.tag; defaults.set(windowStyle, forKey: "windowStyle"); designChanged() }
@@ -267,6 +269,33 @@ if let i = CommandLine.arguments.firstIndex(of: "--mystery"), i+1 < CommandLine.
     img.unlockFocus(); let rep = NSBitmapImageRep(data: img.tiffRepresentation!)!
     try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: CommandLine.arguments[i+1])); exit(0)
 }
+if let i = CommandLine.arguments.firstIndex(of: "--glass"), i+2 < CommandLine.arguments.count {
+    // Side-by-side: mockup (left) vs. glass theme render (right, autumn clear 18°C, seedling under cloche) + small-size previews
+    let mock = NSImage(contentsOfFile: CommandLine.arguments[i+2])
+    windowStyle = 5; potStyle = 6; bgImage = nil; alwaysInfoOverride = true
+    var wx = Wx(); wx.code = 0; wx.month = 10; wx.hour = 10.2; wx.temp = 18; wx.wind = 8; wx.sunrise = 6.6; wx.sunset = 18
+    currentWx = wx; weatherKnown = true
+    let H: CGFloat = 720, W: CGFloat = 720 + 20 + 640 + 20 + 420
+    let img = NSImage(size: NSSize(width: W, height: H + 40)); img.lockFocus()
+    NSGradient(starting: NSColor(calibratedRed: 0.15, green: 0.14, blue: 0.32, alpha: 1), ending: NSColor(calibratedRed: 0.36, green: 0.26, blue: 0.55, alpha: 1))!.draw(in: NSRect(x: 0, y: 0, width: W, height: H + 40), angle: 60)
+    mock?.draw(in: NSRect(x: 0, y: 20, width: H, height: H))
+    func render(_ s: CGFloat, covered: Bool, age: Double, at o: NSPoint) {
+        let (wv, pv) = makeScene(); pv.st = PlantState(); pv.st.speciesId = "basil"; pv.st.age = age; pv.st.health = 1; pv.st.moisture = 0.7; pv.st.covered = covered; pv.st.variantSeed = 3
+        outdoorTemp = 18; let sv = ScaleView(scene: wv, size: NSSize(width: BASE.width * s, height: BASE.height * s)); sv.grip.isHidden = true
+        for _ in 0..<40 { wv.tick() }; pv.setFrameOrigin(NSPoint(x: wv.glassRect.minX - 6, y: pv.frame.origin.y))
+        let r = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(sv.bounds.width), pixelsHigh: Int(sv.bounds.height), bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        sv.cacheDisplay(in: sv.bounds, to: r); r.draw(in: NSRect(origin: o, size: sv.bounds.size), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
+    }
+    render(2.0, covered: true, age: 9, at: NSPoint(x: 740, y: 20))
+    render(1.0, covered: false, age: 40, at: NSPoint(x: 1400, y: H + 20 - 360 - 10))
+    render(0.6, covered: false, age: 70, at: NSPoint(x: 1400, y: 40))
+    render(0.4, covered: true, age: 30, at: NSPoint(x: 1620, y: 40))
+    let a: [NSAttributedString.Key: Any] = [.font: cute(15), .foregroundColor: NSColor.white]
+    ("목업 (Gemini)" as NSString).draw(at: NSPoint(x: 10, y: H + 18), withAttributes: a); ("글래스 테마 (200%)" as NSString).draw(at: NSPoint(x: 750, y: H + 18), withAttributes: a)
+    ("100% · 60% · 40%" as NSString).draw(at: NSPoint(x: 1410, y: H + 18), withAttributes: a)
+    img.unlockFocus(); let rep = NSBitmapImageRep(data: img.tiffRepresentation!)!
+    try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: CommandLine.arguments[i+1])); exit(0)
+}
 if let i = CommandLine.arguments.firstIndex(of: "--compact"), i+1 < CommandLine.arguments.count {
     // Hover previews at 40% / 60% / 100% at real on-screen size; external bubble drawn above when used
     let scales: [CGFloat] = [0.4, 0.6, 1.0]
@@ -301,5 +330,6 @@ if let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i+1 < CommandLine
     try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: CommandLine.arguments[i+1])); exit(0)
 }
 if let me = Bundle.main.bundleIdentifier, NSRunningApplication.runningApplications(withBundleIdentifier: me).filter({ $0.processIdentifier != getpid() }).count > 0 { exit(0) }   // single instance
+if !defaults.bool(forKey: "glassTheme120") { defaults.set(true, forKey: "glassTheme120"); defaults.set(5, forKey: "windowStyle"); defaults.set(6, forKey: "potStyle"); windowStyle = 5; potStyle = 6 }   // v1.2.0: new default theme (others stay selectable)
 if let c = defaults.string(forKey: "cityName"), koreanCity(c) != c { defaults.set(koreanCity(c), forKey: "cityName") }   // migrate English IP city names
 let app = NSApplication.shared; let del = AppDelegate(); app.delegate = del; app.setActivationPolicy(.accessory); app.run()

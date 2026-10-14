@@ -82,7 +82,7 @@ class WeatherView: NSView {
     var t: CGFloat = 0; var lastRainAt: Date? = nil; var flash: CGFloat = 0; var nextFlash: CGFloat = 4
     var plantLabel: String = ""
     let patchW: CGFloat = 90
-    var innerRect: NSRect { NSRect(x: 18, y: 26, width: bounds.width - 36, height: bounds.height - 38) }
+    var innerRect: NSRect { glassTheme ? NSRect(x: 16, y: 26, width: 222, height: 282) : NSRect(x: 18, y: 26, width: bounds.width - 36, height: bounds.height - 38) }
     var glassRect: NSRect { innerRect.insetBy(dx: 6, dy: 6) }
     var sillTop: CGFloat { innerRect.minY - 4 }
     var sunPatchCenter: CGFloat? {
@@ -218,14 +218,15 @@ class WeatherView: NSView {
     override func draw(_ r: NSRect) {
         let w = wx, p = w.precip
         let pal: [(NSColor, NSColor, NSColor)] = [(rgb(0.62, 0.45, 0.32), rgb(0.72, 0.55, 0.40), rgb(0.53, 0.37, 0.26)), (rgb(0.95, 0.95, 0.94), rgb(0.99, 0.99, 0.98), rgb(0.86, 0.86, 0.85)),
-            (rgb(0.9, 0.86, 0.78), rgb(0.96, 0.93, 0.87), rgb(0.82, 0.77, 0.68)), (rgb(0.78, 0.63, 0.35), rgb(0.93, 0.8, 0.5), rgb(0.62, 0.48, 0.24)), (rgb(0.45, 0.31, 0.21), rgb(0.55, 0.39, 0.27), rgb(0.36, 0.24, 0.16))]
+            (rgb(0.9, 0.86, 0.78), rgb(0.96, 0.93, 0.87), rgb(0.82, 0.77, 0.68)), (rgb(0.78, 0.63, 0.35), rgb(0.93, 0.8, 0.5), rgb(0.62, 0.48, 0.24)), (rgb(0.45, 0.31, 0.21), rgb(0.55, 0.39, 0.27), rgb(0.36, 0.24, 0.16)), (rgb(0.93, 0.92, 0.98, 0.95), rgb(1, 1, 1, 0.97), rgb(0.82, 0.8, 0.9, 0.95))]
         let (wood, woodHi, woodLo) = pal[min(windowStyle, pal.count - 1)]
         let inner = innerRect, glass = glassRect, outer = inner.insetBy(dx: -6, dy: -6)
+        if glassTheme { drawGlassFrame(outer) } else {
         NSColor(white: 0, alpha: 0.12).setFill(); let sh0 = windowShape(outer, 0); sh0.transform(using: AffineTransform(translationByX: 0, byY: -2)); sh0.fill()
-        NSGradient(starting: woodLo, ending: woodHi)!.draw(in: windowShape(outer, 0), angle: 90)
+        NSGradient(starting: woodLo, ending: woodHi)!.draw(in: windowShape(outer, 0), angle: 90) }
         if windowStyle == 3 { let ring = windowShape(outer, 0); for k in 0..<10 { let a = CGFloat(k) * .pi / 5, b = ring.bounds, rr = b.width/2 - 5
             woodLo.setFill(); oval(b.midX + cos(a)*rr, b.midY + sin(a)*rr, 4.5, 4.5); woodHi.setFill(); oval(b.midX + cos(a)*rr - 0.6, b.midY + sin(a)*rr + 0.6, 2, 2) } }
-        NSColor(white: 0, alpha: 0.16).setFill(); windowShape(outer, 10).fill()   // inner recess
+        if !glassTheme { NSColor(white: 0, alpha: 0.16).setFill(); windowShape(outer, 10).fill() }   // inner recess
         let glassShape = windowShape(outer, windowStyle == 3 ? 12 : 12)
         NSGraphicsContext.saveGraphicsState(); glassShape.addClip()
         // sky
@@ -237,8 +238,13 @@ class WeatherView: NSView {
             if w.yellowDust { top = mix(top, rgb(0.85, 0.72, 0.45), 0.7); bot = mix(bot, rgb(0.9, 0.78, 0.5), 0.75) }
             else if w.fineDust { top = mix(top, rgb(0.7, 0.68, 0.62), 0.6); bot = mix(bot, rgb(0.8, 0.77, 0.7), 0.6) }
         } else { top = rgb(0.09, 0.11, 0.24); bot = mix(rgb(0.2, 0.2, 0.36), rgb(0.27, 0.28, 0.33), w.clouds) }
+        if glassTheme {   // dreamy pastel: lavender-blue zenith → peach horizon
+            if w.isDay { top = mix(mix(rgb(0.62, 0.68, 0.95), rgb(0.6, 0.6, 0.7), w.clouds), top, p == .storm || p == .heavyRain ? 0.8 : 0.15)
+                bot = mix(mix(rgb(1, 0.82, 0.7), rgb(0.85, 0.82, 0.86), w.clouds), bot, p == .storm || p == .heavyRain ? 0.8 : 0.15) }
+            else { top = mix(rgb(0.13, 0.11, 0.32), top, 0.3); bot = mix(rgb(0.38, 0.28, 0.5), bot, 0.4) } }
         if flash > 0 { top = mix(top, .white, Double(flash) * 0.8); bot = mix(bot, .white, Double(flash) * 0.8) }
-        NSGradient(starting: bot, ending: top)!.draw(in: glass, angle: 90)
+        if glassTheme { NSGradient(colors: [bot, mix(bot, top, 0.55).blended(withFraction: w.isDay ? 0.12 : 0, of: rgb(0.85, 0.8, 1)) ?? top, top], atLocations: [0, 0.45, 1], colorSpace: .deviceRGB)!.draw(in: glass, angle: 90) }
+        else { NSGradient(starting: bot, ending: top)!.draw(in: glass, angle: 90) }
         if let img = bgImage {   // user photo, aspect-fill, then weather tints
             let gb = glassShape.bounds, s = img.size, k = max(gb.width / max(1, s.width), gb.height / max(1, s.height))
             img.draw(in: NSRect(x: gb.midX - s.width*k/2, y: gb.midY - s.height*k/2, width: s.width*k, height: s.height*k), from: .zero, operation: .sourceOver, fraction: 1)
@@ -267,7 +273,8 @@ class WeatherView: NSView {
             let span = max(0.1, (w.hour - w.sunrise) / (w.sunset - w.sunrise))
             let sx = glass.minX + 30 + CGFloat(span) * (glass.width - 60), sy = glass.minY + 50 + CGFloat(sin(.pi * span)) * (glass.height - 95)
             let sc = mix(rgb(1, 0.86, 0.2), rgb(1, 0.5, 0.25), w.golden)
-            sc.withAlphaComponent(0.25).setFill(); oval(sx, sy, 60 + 6*sin(t*2), 60 + 6*sin(t*2)); sc.setFill(); oval(sx, sy, 42, 42)
+            if glassTheme { drawGlowSun(NSPoint(x: sx, y: sy), golden: w.golden, dim: w.clouds) }
+            else { sc.withAlphaComponent(0.25).setFill(); oval(sx, sy, 60 + 6*sin(t*2), 60 + 6*sin(t*2)); sc.setFill(); oval(sx, sy, 42, 42) }
         }
         // rainbow
         if w.rainbow { let cx = glass.midX, cy = glass.minY + 20
@@ -288,22 +295,32 @@ class WeatherView: NSView {
         var hill = [rgb(0.6, 0.75, 0.5), rgb(0.45, 0.65, 0.43), rgb(0.78, 0.65, 0.43), rgb(0.68, 0.66, 0.6)][s]
         if winterSnow { hill = rgb(0.93, 0.95, 0.98) }
         if !w.isDay { hill = mix(hill, rgb(0.05, 0.08, 0.12), 0.8) } else if w.golden > 0 { hill = mix(hill, rgb(0.9, 0.5, 0.3), w.golden * 0.4) }
+        if glassTheme && !winterSnow { hill = [rgb(0.72, 0.85, 0.62), rgb(0.55, 0.78, 0.55), rgb(0.93, 0.68, 0.4), rgb(0.8, 0.78, 0.82)][s]; if !w.isDay { hill = mix(hill, rgb(0.15, 0.12, 0.3), 0.75) } }
         mix(hill, bot, 0.45).setFill()
         let h2 = NSBezierPath(); h2.move(to: NSPoint(x: glass.minX, y: glass.minY)); h2.line(to: NSPoint(x: glass.minX, y: glass.minY+60))
-        h2.curve(to: NSPoint(x: glass.maxX, y: glass.minY+55), controlPoint1: NSPoint(x: glass.midX, y: glass.minY+30), controlPoint2: NSPoint(x: glass.midX+60, y: glass.minY+90)); h2.line(to: NSPoint(x: glass.maxX, y: glass.minY)); h2.fill()
+        h2.curve(to: NSPoint(x: glass.maxX, y: glass.minY+55), controlPoint1: NSPoint(x: glass.midX, y: glass.minY+30), controlPoint2: NSPoint(x: glass.midX+60, y: glass.minY+90)); h2.line(to: NSPoint(x: glass.maxX, y: glass.minY))
+        if glassTheme { NSGradient(colors: [mix(hill, bot, 0.6), mix(hill, bot, 0.3)])!.draw(in: h2, angle: 90) } else { h2.fill() }
         hill.setFill()
         let h = NSBezierPath(); h.move(to: NSPoint(x: glass.minX, y: glass.minY)); h.line(to: NSPoint(x: glass.minX, y: glass.minY+40))
-        h.curve(to: NSPoint(x: glass.maxX, y: glass.minY+30), controlPoint1: NSPoint(x: glass.midX-40, y: glass.minY+80), controlPoint2: NSPoint(x: glass.midX+40, y: glass.minY+10)); h.line(to: NSPoint(x: glass.maxX, y: glass.minY)); h.fill()
+        h.curve(to: NSPoint(x: glass.maxX, y: glass.minY+30), controlPoint1: NSPoint(x: glass.midX-40, y: glass.minY+80), controlPoint2: NSPoint(x: glass.midX+40, y: glass.minY+10)); h.line(to: NSPoint(x: glass.maxX, y: glass.minY))
+        if glassTheme { NSGradient(colors: [mix(hill, .black, 0.12), hill, mix(hill, .white, 0.25)], atLocations: [0, 0.6, 1], colorSpace: .deviceRGB)!.draw(in: h, angle: 90) } else { h.fill() }
         // tree (sways with wind)
         let sway = CGFloat(min(w.wind, 70)) / 70 * (6 + 4*sin(t*3)) + sin(t*1.3) * 1.5
         let tx = glass.maxX - 70, ty = glass.minY + 48
         let trunk = w.isDay ? rgb(0.48, 0.36, 0.28) : rgb(0.1, 0.08, 0.06)
-        trunk.setStroke(); let tr = NSBezierPath(); tr.move(to: NSPoint(x: tx, y: ty - 20)); tr.curve(to: NSPoint(x: tx + sway, y: ty + 45), controlPoint1: NSPoint(x: tx, y: ty + 10), controlPoint2: NSPoint(x: tx + sway*0.5, y: ty + 30)); tr.lineWidth = 6; tr.lineCapStyle = .round; tr.stroke()
+        trunk.setStroke(); let tr = NSBezierPath(); tr.move(to: NSPoint(x: tx, y: ty - 20)); tr.curve(to: NSPoint(x: tx + sway, y: ty + 45), controlPoint1: NSPoint(x: tx, y: ty + 10), controlPoint2: NSPoint(x: tx + sway*0.5, y: ty + 30)); tr.lineWidth = glassTheme ? 7 : 6; tr.lineCapStyle = .round; tr.stroke()
         for (a, l) in [(-0.7, 22.0), (0.6, 20.0), (-0.2, 16.0)] as [(CGFloat, CGFloat)] { let br = NSBezierPath(); let bp = NSPoint(x: tx + sway*0.7, y: ty + 30); br.move(to: bp); br.line(to: NSPoint(x: bp.x + sin(a)*l + sway*0.4, y: bp.y + cos(a)*l)); br.lineWidth = 2.5; br.stroke() }
         if s != 3 || !w.isDay && false {
             var fol = [rgb(0.98, 0.78, 0.84), rgb(0.36, 0.58, 0.38), rgb(0.9, 0.56, 0.3), rgb(0.5, 0.5, 0.5)][s]
             if !w.isDay { fol = mix(fol, rgb(0.05, 0.08, 0.1), 0.75) }
-            fol.setFill(); for (dx, dy, rr) in [(0.0, 52.0, 26.0), (-14.0, 42.0, 20.0), (14.0, 44.0, 20.0), (0.0, 64.0, 18.0)] as [(CGFloat, CGFloat, CGFloat)] { oval(tx + sway + dx, ty + dy, rr*2, rr*1.7) }
+            if glassTheme { if s == 2 && w.isDay { fol = rgb(0.98, 0.58, 0.28) }
+                NSGraphicsContext.saveGraphicsState(); let ft = NSAffineTransform(); ft.translateX(by: tx + sway, yBy: ty + 50); ft.scale(by: 1.28); ft.translateX(by: -(tx + sway), yBy: -(ty + 50)); ft.concat(); defer { NSGraphicsContext.restoreGraphicsState() }
+                for (dx, dy, rr) in [(-18.0, 42.0, 11.0), (-6.0, 37.0, 12.0), (8.0, 38.0, 12.0), (20.0, 43.0, 11.0), (-24.0, 54.0, 10.0), (24.0, 55.0, 10.0), (-13.0, 52.0, 13.0), (13.0, 53.0, 13.0), (0.0, 50.0, 14.0), (-10.0, 65.0, 12.0), (10.0, 66.0, 12.0), (0.0, 74.0, 10.0), (-20.0, 64.0, 8.0), (20.0, 64.0, 8.0)] as [(CGFloat, CGFloat, CGFloat)] {
+                    let b = NSBezierPath(ovalIn: NSRect(x: tx + sway + dx - rr, y: ty + dy - rr*0.9, width: rr*2, height: rr*1.8))
+                    NSGradient(colors: [mix(fol, rgb(1, 0.9, 0.6), 0.45), fol, mix(fol, rgb(0.6, 0.18, 0.15), 0.35)])!.draw(in: b, relativeCenterPosition: NSPoint(x: -0.35, y: 0.45)) }
+                mix(fol, rgb(0.55, 0.2, 0.1), 0.4).setFill(); for i in 0..<16 { let a = CGFloat(i) * 2.4, rr = 8 + CGFloat((i * 7) % 18)
+                    let lf = NSBezierPath(ovalIn: NSRect(x: -2, y: -1, width: 4, height: 2)); let tf = NSAffineTransform(); tf.translateX(by: tx + sway + cos(a)*rr, yBy: ty + 55 + sin(a)*rr*0.8); tf.rotate(byRadians: a); lf.transform(using: tf as AffineTransform); lf.fill() } }
+            else { fol.setFill(); for (dx, dy, rr) in [(0.0, 52.0, 26.0), (-14.0, 42.0, 20.0), (14.0, 44.0, 20.0), (0.0, 64.0, 18.0)] as [(CGFloat, CGFloat, CGFloat)] { oval(tx + sway + dx, ty + dy, rr*2, rr*1.7) } }
             if s == 0 && w.isDay { NSColor.white.withAlphaComponent(0.6).setFill(); for i in 0..<14 { oval(tx + sway + CGFloat((i*29)%50) - 25, ty + 35 + CGFloat((i*17)%40), 4, 4) } }
         } else if winterSnow { NSColor.white.setFill(); oval(tx + sway*0.7 - 8, ty + 44, 12, 4); oval(tx + sway*0.7 + 10, ty + 46, 10, 3) }
         // drifting things: petals (spring), leaves (autumn or windy), birds, butterflies
@@ -374,17 +391,21 @@ class WeatherView: NSView {
             NSColor(white: 1, alpha: 0.55).setStroke(); for i in 0..<10 { let c = NSPoint(x: i % 2 == 0 ? glass.minX : glass.maxX, y: i % 4 < 2 ? glass.minY : glass.maxY)
                 let fp = NSBezierPath(); fp.move(to: c); let a = CGFloat(i) * 0.6; fp.line(to: NSPoint(x: c.x + (i % 2 == 0 ? 1 : -1) * (20 + cos(a)*15), y: c.y + (i % 4 < 2 ? 1 : -1) * (20 + sin(a)*15))); fp.lineWidth = 0.8; fp.stroke() } }
         // glare
-        NSColor(white: 1, alpha: 0.10).setFill(); let gl = NSBezierPath(); gl.move(to: NSPoint(x: glass.minX+20, y: glass.maxY)); gl.line(to: NSPoint(x: glass.minX+60, y: glass.maxY)); gl.line(to: NSPoint(x: glass.minX, y: glass.minY+40)); gl.line(to: NSPoint(x: glass.minX, y: glass.maxY-20)); gl.fill()
+        if glassTheme { drawGlassReflections(glass, w) }
+        NSColor(white: 1, alpha: glassTheme ? 0.0 : 0.10).setFill(); let gl = NSBezierPath(); gl.move(to: NSPoint(x: glass.minX+20, y: glass.maxY)); gl.line(to: NSPoint(x: glass.minX+60, y: glass.maxY)); gl.line(to: NSPoint(x: glass.minX, y: glass.minY+40)); gl.line(to: NSPoint(x: glass.minX, y: glass.maxY-20)); gl.fill()
         NSGraphicsContext.restoreGraphicsState()
         // mullions per window style (clipped to the glass)
         NSGraphicsContext.saveGraphicsState(); glassShape.addClip()
-        func bar(_ r: NSRect) { NSColor(white: 0, alpha: 0.10).setFill(); r.offsetBy(dx: 1, dy: -1).fill(); wood.setFill(); NSBezierPath(roundedRect: r, xRadius: R(3), yRadius: R(3)).fill() }
+        func bar(_ r: NSRect) { NSColor(white: 0, alpha: 0.10).setFill(); r.offsetBy(dx: 1, dy: -1).fill(); wood.setFill(); NSBezierPath(roundedRect: r, xRadius: R(3), yRadius: R(3)).fill()
+            if glassTheme { NSColor(white: 1, alpha: 0.9).setFill(); (r.width < r.height ? NSRect(x: r.minX + 0.6, y: r.minY, width: 1, height: r.height) : NSRect(x: r.minX, y: r.maxY - 1.4, width: r.width, height: 1)).fill() } }
         let gb = glassShape.bounds
         switch windowStyle {
         case 0: bar(NSRect(x: gb.midX-3, y: gb.minY, width: 6, height: gb.height)); bar(NSRect(x: gb.minX, y: gb.midY-3, width: gb.width, height: 6))
         case 1: break
-        case 2: bar(NSRect(x: gb.midX-2.5, y: gb.minY, width: 5, height: gb.height)); bar(NSRect(x: gb.minX, y: gb.maxY - gb.width/2 - 2.5, width: gb.width, height: 5))
-            for a in [45.0, 135.0] as [CGFloat] { let p0 = NSPoint(x: gb.midX, y: gb.maxY - gb.width/2); let l = NSBezierPath(); l.move(to: p0); l.line(to: NSPoint(x: p0.x + cos(a * .pi/180)*gb.width, y: p0.y + sin(a * .pi/180)*gb.width)); l.lineWidth = 4; wood.setStroke(); l.stroke() }
+        case 2, 5: let bw: CGFloat = windowStyle == 5 ? 4 : 5
+            bar(NSRect(x: gb.midX-bw/2, y: gb.minY, width: bw, height: gb.height)); bar(NSRect(x: gb.minX, y: gb.maxY - gb.width/2 - bw/2, width: gb.width, height: bw))
+            for a in [45.0, 135.0] as [CGFloat] { let p0 = NSPoint(x: gb.midX, y: gb.maxY - gb.width/2); let l = NSBezierPath(); l.move(to: p0); l.line(to: NSPoint(x: p0.x + cos(a * .pi/180)*gb.width, y: p0.y + sin(a * .pi/180)*gb.width)); l.lineWidth = windowStyle == 5 ? 3.2 : 4; wood.setStroke(); l.stroke()
+                if windowStyle == 5 { NSColor(white: 1, alpha: 0.8).setStroke(); l.lineWidth = 0.8; l.stroke() } }
         case 3: NSColor(white: 1, alpha: 0.08).setStroke(); let ring = NSBezierPath(ovalIn: gb.insetBy(dx: 3, dy: 3)); ring.lineWidth = 3; ring.stroke()
         default: // 창호지 lattice with soft paper
             NSColor(calibratedRed: 1, green: 0.98, blue: 0.92, alpha: 0.16).setFill(); gb.fill(using: .sourceOver)
@@ -397,10 +418,103 @@ class WeatherView: NSView {
             beamCol.withAlphaComponent(0.08*a).setFill()
             let beam = NSBezierPath(); beam.move(to: NSPoint(x: px - patchW/2 + 20, y: glass.maxY)); beam.line(to: NSPoint(x: px + patchW/2 + 20, y: glass.maxY)); beam.line(to: NSPoint(x: px + patchW/2, y: sillTop)); beam.line(to: NSPoint(x: px - patchW/2, y: sillTop)); beam.close(); beam.fill() }
         let sill = NSRect(x: inner.minX-14, y: inner.minY-18, width: inner.width+28, height: 14)
+        if glassTheme { drawGlassSill(sill) } else {
         NSColor(white: 0, alpha: 0.14).setFill(); NSBezierPath(roundedRect: sill.offsetBy(dx: 0, dy: -3), xRadius: R(6), yRadius: R(6)).fill()
         NSGradient(starting: woodLo, ending: woodHi)!.draw(in: NSBezierPath(roundedRect: sill, xRadius: R(6), yRadius: R(6)), angle: 90)
-        woodHi.withAlphaComponent(0.8).setFill(); NSBezierPath(roundedRect: NSRect(x: sill.minX + 3, y: sill.maxY - 2.5, width: sill.width - 6, height: 1.5), xRadius: 1, yRadius: 1).fill()
+        woodHi.withAlphaComponent(0.8).setFill(); NSBezierPath(roundedRect: NSRect(x: sill.minX + 3, y: sill.maxY - 2.5, width: sill.width - 6, height: 1.5), xRadius: 1, yRadius: 1).fill() }
+        if alwaysInfo { drawInfo(w) }
         // (no plate on the sill: the soft beam alone shows the sunny spot)
+    }
+}
+
+extension WeatherView {
+    func drawGlassFrame(_ outer: NSRect) {
+        let fr = windowShape(outer, 0)
+        withShadow(rgb(0.18, 0.1, 0.35, 0.45), blur: 16, dy: -7) { rgb(0.9, 0.88, 0.97, 0.92).setFill(); fr.fill() }
+        NSGradient(colors: [rgb(0.97, 0.96, 0.99, 0.96), rgb(0.85, 0.82, 0.9, 0.95), rgb(0.64, 0.6, 0.72, 0.97)], atLocations: [0, 0.45, 1], colorSpace: .deviceRGB)!.draw(in: fr, angle: -65)
+        // soft 3D: top-left sheen and inner glow along the rim
+        NSGraphicsContext.saveGraphicsState(); fr.addClip()
+        NSGradient(colors: [NSColor(white: 1, alpha: 0.7), NSColor(white: 1, alpha: 0)])!.draw(fromCenter: NSPoint(x: outer.minX + 30, y: outer.maxY - 40), radius: 0, toCenter: NSPoint(x: outer.minX + 30, y: outer.maxY - 40), radius: 140, options: [])
+        NSGraphicsContext.restoreGraphicsState()
+        NSColor(white: 1, alpha: 0.9).setStroke(); let rim = windowShape(outer, 1.2); rim.lineWidth = 1.4; rim.stroke()
+        rgb(0.55, 0.5, 0.72, 0.35).setStroke(); let inR = windowShape(outer, 11.3); inR.lineWidth = 1.6; inR.stroke()     // bevel into the recess
+        NSColor(white: 1, alpha: 0.85).setStroke(); let inR2 = windowShape(outer, 9.6); inR2.lineWidth = 1; inR2.stroke()
+    }
+    func drawGlowSun(_ c: NSPoint, golden: Double, dim: Double) {
+        let warm = mix(rgb(1, 0.94, 0.7), rgb(1, 0.7, 0.45), golden), a = CGFloat(1 - 0.6 * dim)
+        // warm light wash across the sky
+        NSGradient(colors: [warm.withAlphaComponent(0.35 * a), warm.withAlphaComponent(0)])!.draw(fromCenter: c, radius: 0, toCenter: c, radius: 190, options: [])
+        let pulse = 3 * sin(t * 1.5)
+        NSGradient(colors: [NSColor(calibratedRed: 1, green: 0.97, blue: 0.85, alpha: 0.9 * a), warm.withAlphaComponent(0.4 * a), warm.withAlphaComponent(0)], atLocations: [0, 0.4, 1], colorSpace: .deviceRGB)!.draw(fromCenter: c, radius: 0, toCenter: c, radius: 52 + pulse, options: [])
+        let disc = NSBezierPath(ovalIn: NSRect(x: c.x - 20, y: c.y - 20, width: 40, height: 40))
+        withShadow(warm.withAlphaComponent(0.9 * a), blur: 14) { mix(rgb(1, 0.95, 0.72), rgb(1, 0.75, 0.5), golden).withAlphaComponent(a).setFill(); disc.fill() }
+        NSGradient(colors: [NSColor(calibratedRed: 1, green: 1, blue: 0.94, alpha: a), mix(rgb(1, 0.9, 0.6), rgb(1, 0.66, 0.4), golden).withAlphaComponent(a)])!.draw(in: disc, relativeCenterPosition: NSPoint(x: -0.3, y: 0.35))
+    }
+    func drawGlassReflections(_ g: NSRect, _ w: Wx) {
+        let a: CGFloat = w.isDay ? 1 : 0.5
+        for (x0, wd, al) in [(0.08, 0.16, 0.22), (0.3, 0.06, 0.16), (0.62, 0.1, 0.12)] as [(CGFloat, CGFloat, CGFloat)] {
+            let p = NSBezierPath(); let x = g.minX + g.width * x0, ww = g.width * wd
+            p.move(to: NSPoint(x: x + 70, y: g.maxY)); p.line(to: NSPoint(x: x + 70 + ww, y: g.maxY)); p.line(to: NSPoint(x: x + ww - 40, y: g.minY)); p.line(to: NSPoint(x: x - 40, y: g.minY)); p.close()
+            NSGradient(colors: [NSColor(white: 1, alpha: al * a), NSColor(white: 1, alpha: 0.02)])!.draw(in: p, angle: -90) }
+        // inner glow at the glass edge
+        let edge = windowShape(innerRect.insetBy(dx: -6, dy: -6), 12); edge.lineWidth = 5; NSColor(white: 1, alpha: 0.18 * a).setStroke(); edge.stroke()
+    }
+    func drawGlassSill(_ sill0: NSRect) {
+        let sill = NSRect(x: sill0.minX - 4, y: sill0.minY, width: sill0.width + 8, height: sill0.height - 2)
+        let p = NSBezierPath(roundedRect: sill, xRadius: 4, yRadius: 4)
+        withShadow(rgb(0.15, 0.1, 0.3, 0.45), blur: 10, dy: -5) { rgb(0.86, 0.84, 0.93, 1).setFill(); p.fill() }
+        NSGradient(colors: [rgb(0.74, 0.71, 0.84), rgb(0.88, 0.86, 0.95), rgb(0.97, 0.96, 1)], atLocations: [0, 0.55, 1], colorSpace: .deviceRGB)!.draw(in: p, angle: 90)
+        NSColor(white: 1, alpha: 0.95).setFill(); NSBezierPath(roundedRect: NSRect(x: sill.minX + 2, y: sill.maxY - 1.6, width: sill.width - 4, height: 1.2), xRadius: 0.6, yRadius: 0.6).fill()
+    }
+    /// One poetic Korean line from the weather / season / time
+    var poeticLine: String {
+        let w = wx, p = w.precip, s = w.season
+        switch p {
+        case .storm: return "천둥이 우르릉, 창문 꼭 닫아요"
+        case .heavyRain: return "빗줄기가 세차게 쏟아져요"
+        case .rain: return "빗방울이 톡톡 창을 두드려요"
+        case .drizzle: return "보슬비가 살며시 내려요"
+        case .freezingRain: return "길이 얼어요, 조심조심"
+        case .sleet: return "눈과 비가 섞여 내려요"
+        case .snow, .heavySnow: return "하얀 눈이 소복소복 쌓여요"
+        case .blizzard: return "눈보라가 휘몰아쳐요"
+        case .none: break
+        }
+        if w.fog { return "안개가 포근히 내려앉았어요" }
+        if w.yellowDust { return "황사로 하늘이 뿌예요" }
+        if w.fineDust { return "공기가 탁해요, 창문은 잠시 닫아요" }
+        if !w.isDay { return w.clouds < 0.5 ? "별이 반짝이는 고요한 밤" : "구름 덮인 조용한 밤이에요" }
+        if w.golden > 0.3 { return w.hour < 12 ? "아침 햇살이 번져요" : "노을이 곱게 물들어요" }
+        if w.temp >= 30 { return "햇볕이 쨍쨍, 물 많이 마셔요" }
+        if w.temp <= 0 { return "손이 시린 날이에요" }
+        if w.wind >= 15 || (s == 2 && w.clouds > 0.1) { return ["꽃바람이 살랑여요", "시원한 바람이 불어와요", "가을바람이 불어요", "찬바람이 쌩쌩 불어요"][s] }
+        if w.clouds >= 0.9 { return "구름이 하늘을 덮었어요" }
+        if w.clouds > 0.3 { return "구름이 느릿느릿 흘러가요" }
+        return ["봄볕이 따사로워요", "여름 햇살이 반짝여요", "가을 하늘이 높고 맑아요", "포근한 겨울 햇살이에요"][s]
+    }
+    /// Always-on weather text at the top-right, outside the glass. Keeps a fixed minimum on-screen size.
+    func drawInfo(_ w: Wx) {
+        let sc = sceneScale(self)
+        func u(_ design: CGFloat, min pt: CGFloat) -> CGFloat { max(design, pt / sc) }      // scene units honoring a min point size
+        let ink = NSColor(calibratedRed: 0.99, green: 0.96, blue: 0.93, alpha: 1)
+        let sh = NSShadow(); sh.shadowColor = NSColor(calibratedRed: 0.1, green: 0.06, blue: 0.22, alpha: 0.55); sh.shadowBlurRadius = 3 / sc; sh.shadowOffset = NSSize(width: 0, height: -0.5 / sc)
+        let right = bounds.maxX - 8, top = bounds.maxY - 6
+        let f1 = u(11, min: 10), f2 = u(34, min: 20), f3 = u(11, min: 10)
+        let a1: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: f1, weight: .regular), .foregroundColor: ink, .shadow: sh]
+        let a2: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: f2, weight: .thin), .foregroundColor: ink, .shadow: sh, .kern: -0.5]
+        let a3: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: f3, weight: .light), .foregroundColor: ink.withAlphaComponent(0.92), .shadow: sh]
+        let roomy = sc >= 0.9   // at small sizes use a shorter headline
+        let head = ((roomy ? "현재 날씨: " : "") + w.desc.components(separatedBy: " · ")[0]) as NSString
+        let hs = head.size(withAttributes: a1), iconS = hs.height * 0.95
+        var y = top - hs.height
+        head.draw(at: NSPoint(x: right - hs.width, y: y), withAttributes: a1)
+        withShadow(sh.shadowColor as! NSColor, blur: 3 / sc) { drawSymbol(w.symbol.replacingOccurrences(of: ".fill", with: ""), NSRect(x: right - hs.width - iconS - 6 / sc * 0.6 - 4, y: y + hs.height * 0.05, width: iconS, height: iconS), ink, weight: .light) }
+        if let tv = temp {
+            let ts = String(format: "%.0f°C", tv) as NSString, tsz = ts.size(withAttributes: a2)
+            y -= tsz.height * 0.92; ts.draw(at: NSPoint(x: right - tsz.width, y: y), withAttributes: a2)
+            // poetic line only when there is room for it at a readable size
+            if sc >= 0.75 { let ps = poeticLine as NSString, psz = ps.size(withAttributes: a3); y -= psz.height + 1; ps.draw(at: NSPoint(x: right - psz.width, y: y), withAttributes: a3) }
+        }
     }
 }
 

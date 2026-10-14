@@ -320,6 +320,22 @@ class PlantView: NSView {
             c(0.4, 0.3, 0.28, 0.6).setStroke()
             for s in [-1.0, 1.0] as [CGFloat] { for k in 0..<2 { let wk = NSBezierPath(); wk.move(to: NSPoint(x: cx + s*20, y: 37 + CGFloat(k)*3)); wk.line(to: NSPoint(x: cx + s*31, y: 36 + CGFloat(k)*5)); wk.lineWidth = 0.9; wk.stroke() } }
             c(1, 0.6, 0.65).setFill(); let nose = NSBezierPath(); nose.move(to: NSPoint(x: cx-2.5, y: 40)); nose.line(to: NSPoint(x: cx+2.5, y: 40)); nose.line(to: NSPoint(x: cx, y: 37.5)); nose.close(); nose.fill()
+        case 6: // 말랑 도자기: squat glossy kawaii ceramic
+            let body = NSBezierPath(); body.move(to: NSPoint(x: cx-22, y: 22))
+            body.curve(to: NSPoint(x: cx-31, y: 64), controlPoint1: NSPoint(x: cx-44, y: 22), controlPoint2: NSPoint(x: cx-42, y: 56))
+            body.line(to: NSPoint(x: cx+31, y: 64))
+            body.curve(to: NSPoint(x: cx+22, y: 22), controlPoint1: NSPoint(x: cx+42, y: 56), controlPoint2: NSPoint(x: cx+44, y: 22)); body.close()
+            withShadow(NSColor(calibratedRed: 0.2, green: 0.15, blue: 0.35, alpha: 0.35), blur: 8, dy: -3) { c(0.95, 0.94, 0.97).setFill(); body.fill() }
+            NSGradient(colors: [c(1, 1, 1), c(0.95, 0.94, 0.97), c(0.82, 0.8, 0.88)], atLocations: [0, 0.45, 1], colorSpace: .deviceRGB)!.draw(in: body, relativeCenterPosition: NSPoint(x: -0.3, y: 0.3))
+            // warm bounce light from the sill + specular highlights
+            NSGraphicsContext.saveGraphicsState(); body.addClip()
+            NSGradient(colors: [c(1, 0.86, 0.75, 0.35), c(1, 0.86, 0.75, 0)])!.draw(in: NSRect(x: cx-40, y: 22, width: 80, height: 14), angle: 90)
+            NSGraphicsContext.restoreGraphicsState()
+            let hl = NSBezierPath(ovalIn: NSRect(x: -3.5, y: -8, width: 7, height: 16)); let tr = NSAffineTransform(); tr.translateX(by: cx-25, yBy: 48); tr.rotate(byDegrees: -25); hl.transform(using: tr as AffineTransform)
+            NSColor(white: 1, alpha: 0.9).setFill(); hl.fill(); NSBezierPath(ovalIn: NSRect(x: cx-27, y: 34, width: 3, height: 3)).fill()
+            let rim = NSBezierPath(roundedRect: NSRect(x: cx-35, y: 61, width: 70, height: 11), xRadius: 5.5, yRadius: 5.5)
+            NSGradient(colors: [c(0.86, 0.85, 0.91), c(1, 1, 1)])!.draw(in: rim, angle: 90)
+            NSColor(white: 1, alpha: 0.95).setStroke(); rim.lineWidth = 0.8; rim.stroke()
         case 5: // concrete block
             let body = NSBezierPath(roundedRect: NSRect(x: cx-33, y: 22, width: 66, height: 49), xRadius: R(6), yRadius: R(6)); grad(body, [c(0.8, 0.8, 0.79), c(0.72, 0.72, 0.71), c(0.62, 0.62, 0.61)])
             NSGraphicsContext.saveGraphicsState(); body.addClip(); for k in 0..<40 { NSColor(white: k % 2 == 0 ? 0.5 : 0.9, alpha: 0.35).setFill(); NSBezierPath(ovalIn: NSRect(x: cx - 32 + CGFloat((k*37) % 64), y: 24 + CGFloat((k*53) % 45), width: 1.4, height: 1.4)).fill() }; NSGraphicsContext.restoreGraphicsState()
@@ -340,11 +356,15 @@ class PlantView: NSView {
         if st.moisture > 1 { NSColor(white: 1, alpha: 0.35).setFill(); NSBezierPath(ovalIn: NSRect(x: cx-12, y: 68.5, width: 9, height: 2)).fill(); NSBezierPath(ovalIn: NSRect(x: cx+6, y: 68, width: 6, height: 2)).fill() }
         // face
         let ink = NSColor(calibratedRed: 0.36, green: 0.2, blue: 0.15, alpha: 0.85); ink.setFill(); ink.setStroke()
-        if dead { for dx in [-10.0, 10.0] as [CGFloat] { let x = NSBezierPath(); x.move(to: NSPoint(x: cx+dx-3, y: 41)); x.line(to: NSPoint(x: cx+dx+3, y: 47)); x.move(to: NSPoint(x: cx+dx-3, y: 47)); x.line(to: NSPoint(x: cx+dx+3, y: 41)); x.lineWidth = 1.5; x.stroke() } }
+        if potStyle == 6 && !dead { let blink = Int(t*10) % 40 == 0
+            for dx in [-10.0, 10.0] as [CGFloat] { c(0.2, 0.13, 0.12).setFill(); NSBezierPath(ovalIn: NSRect(x: cx+dx-3.2, y: 40.5, width: 6.4, height: blink ? 1.2 : 7)).fill()
+                if !blink { NSColor.white.setFill(); NSBezierPath(ovalIn: NSRect(x: cx+dx-1.6, y: 44, width: 2.4, height: 2.4)).fill(); NSBezierPath(ovalIn: NSRect(x: cx+dx+0.8, y: 42, width: 1.1, height: 1.1)).fill() } }
+            ink.setFill() } else if dead { for dx in [-10.0, 10.0] as [CGFloat] { let x = NSBezierPath(); x.move(to: NSPoint(x: cx+dx-3, y: 41)); x.line(to: NSPoint(x: cx+dx+3, y: 47)); x.move(to: NSPoint(x: cx+dx-3, y: 47)); x.line(to: NSPoint(x: cx+dx+3, y: 41)); x.lineWidth = 1.5; x.stroke() } }
         else { let blink = Int(t*10) % 40 == 0; for dx in [-10.0, 10.0] as [CGFloat] { NSBezierPath(ovalIn: NSRect(x: cx+dx-2.5, y: 42, width: 5, height: blink ? 1 : 5)).fill() } }
         let happy = st.health > 0.6 && !dead
         let m = NSBezierPath(); m.move(to: NSPoint(x: cx-6, y: 35)); m.curve(to: NSPoint(x: cx+6, y: 35), controlPoint1: NSPoint(x: cx-3, y: happy ? 30 : 39), controlPoint2: NSPoint(x: cx+3, y: happy ? 30 : 39)); m.lineWidth = 1.6; m.lineCapStyle = .round; m.stroke()
-        NSColor(calibratedRed: 1, green: 0.55, blue: 0.5, alpha: happy ? 0.35 : 0).setFill(); for dx in [-17.0, 17.0] as [CGFloat] { NSBezierPath(ovalIn: NSRect(x: cx+dx-4, y: 34, width: 8, height: 4)).fill() }
+        if potStyle == 6 { for dx in [-18.0, 18.0] as [CGFloat] { let b = NSBezierPath(ovalIn: NSRect(x: cx+dx-5, y: 33.5, width: 10, height: 5.5)); NSGradient(colors: [NSColor(calibratedRed: 1, green: 0.5, blue: 0.55, alpha: happy ? 0.55 : 0.15), NSColor(calibratedRed: 1, green: 0.6, blue: 0.6, alpha: 0)])!.draw(in: b, relativeCenterPosition: .zero) } }
+        else { NSColor(calibratedRed: 1, green: 0.55, blue: 0.5, alpha: happy ? 0.35 : 0).setFill(); for dx in [-17.0, 17.0] as [CGFloat] { NSBezierPath(ovalIn: NSRect(x: cx+dx-4, y: 34, width: 8, height: 4)).fill() } }
 
         guard let s = sp else { return }
         let wilt = CGFloat(dead ? 1 : min(1, (1 - st.health) + (st.moisture < 0.25 ? (0.25 - st.moisture) * 2.4 : 0)))
@@ -388,9 +408,11 @@ class PlantView: NSView {
             for k in 0..<10 { NSBezierPath(ovalIn: NSRect(x: cx - 18 + CGFloat((k*37) % 36), y: 78 + CGFloat((k*23) % 50), width: 2.5, height: 2.5)).fill() } }
         if st.covered ?? false { // glass cloche
             let d = NSBezierPath(); d.move(to: NSPoint(x: cx-38, y: 70)); d.line(to: NSPoint(x: cx-38, y: 150)); d.curve(to: NSPoint(x: cx+38, y: 150), controlPoint1: NSPoint(x: cx-38, y: 195), controlPoint2: NSPoint(x: cx+38, y: 195)); d.line(to: NSPoint(x: cx+38, y: 70)); d.close()
+            if glassTheme || potStyle == 6 { drawGlossyCloche(d, cx) } else {
             NSColor(white: 1, alpha: 0.22).setFill(); d.fill(); NSColor(white: 1, alpha: 0.7).setStroke(); d.lineWidth = 1.5; d.stroke()
             NSColor(white: 1, alpha: 0.5).setFill(); NSBezierPath(ovalIn: NSRect(x: cx-26, y: 110, width: 6, height: 40)).fill()
-            NSColor(white: 0.9, alpha: 0.9).setFill(); NSBezierPath(ovalIn: NSRect(x: cx-5, y: 176, width: 10, height: 8)).fill() }
+            NSColor(white: 0.9, alpha: 0.9).setFill(); NSBezierPath(ovalIn: NSRect(x: cx-5, y: 176, width: 10, height: 8)).fill() } }
+        if alwaysInfo { drawGauge(cx) }
         if splash > 0 { NSColor(calibratedRed: 0.4, green: 0.7, blue: 1, alpha: min(1, splash)).setFill()
             for k in 0..<5 { NSBezierPath(ovalIn: NSRect(x: cx - 20 + CGFloat(k)*10, y: 74 + CGFloat(k*13 % 30) + splash*40, width: 4, height: 6)).fill() } }
         // single action badge (no text)
@@ -418,4 +440,58 @@ class PlantView: NSView {
         }
     }
     var lastToastTick: CGFloat = 0
+}
+
+extension PlantView {
+    func drawGlossyCloche(_ d: NSBezierPath, _ cx: CGFloat) {
+        NSGradient(colors: [NSColor(white: 1, alpha: 0.10), NSColor(white: 1, alpha: 0.04), NSColor(white: 1, alpha: 0.22)], atLocations: [0, 0.5, 1], colorSpace: .deviceRGB)!.draw(in: d, angle: 0)
+        NSGraphicsContext.saveGraphicsState(); d.addClip()
+        NSGradient(colors: [NSColor(white: 1, alpha: 0.75), NSColor(white: 1, alpha: 0)])!.draw(in: NSRect(x: cx-34, y: 72, width: 10, height: 112), angle: 0)    // left rim light
+        NSGradient(colors: [NSColor(white: 1, alpha: 0), NSColor(white: 1, alpha: 0.55)])!.draw(in: NSRect(x: cx+27, y: 72, width: 11, height: 100), angle: 0)    // right rim light
+        NSGraphicsContext.restoreGraphicsState()
+        let streak = NSBezierPath(roundedRect: NSRect(x: cx-25, y: 104, width: 5, height: 52), xRadius: 2.5, yRadius: 2.5)
+        NSGradient(colors: [NSColor(white: 1, alpha: 0.05), NSColor(white: 1, alpha: 0.85), NSColor(white: 1, alpha: 0.1)])!.draw(in: streak, angle: 90)
+        let cap = NSBezierPath(); cap.appendArc(withCenter: NSPoint(x: cx, y: 150), radius: 31, startAngle: 120, endAngle: 160); cap.lineWidth = 3; cap.lineCapStyle = .round; NSColor(white: 1, alpha: 0.7).setStroke(); cap.stroke()
+        NSColor(white: 1, alpha: 0.8).setStroke(); d.lineWidth = 1.1; d.stroke()
+        let ring = NSBezierPath(ovalIn: NSRect(x: cx-38, y: 66.5, width: 76, height: 7)); NSColor(white: 1, alpha: 0.55).setStroke(); ring.lineWidth = 1.2; ring.stroke()
+        let knob = NSBezierPath(ovalIn: NSRect(x: cx-6, y: 176, width: 12, height: 10))
+        withShadow(NSColor(white: 0, alpha: 0.2), blur: 2, dy: -1) { NSColor(white: 0.97, alpha: 0.95).setFill(); knob.fill() }
+        NSColor.white.setFill(); NSBezierPath(ovalIn: NSRect(x: cx-3.5, y: 181, width: 3, height: 2.5)).fill()
+    }
+    var levelInfo: (Int, String, Double)? {
+        guard let s = sp, !st.dead else { return nil }
+        let names = ["씨앗", "새싹", "꼬마 식물", "다 자람"]
+        let lv = st.age < s.germDays ? 1 : st.age < s.germDays + (s.matureDays - s.germDays) * 0.35 ? 2 : st.age < s.matureDays ? 3 : 4
+        return (lv, names[lv - 1], min(1, st.age / s.matureDays))
+    }
+    /// Plant top (scene units) to float the gauge above the foliage
+    var plantTopY: CGFloat {
+        guard let s = sp else { return 76 }
+        if st.age < s.germDays { return 78 }
+        let p = CGFloat(min(1, (st.age - s.germDays) / (s.matureDays - s.germDays)))
+        if s.id == "echeveria" { return 80 + 30*p }
+        let tall: CGFloat = ["sunflower": 105, "tomato": 85, "rose": 70, "basil": 60, "lettuce": 30][s.id] ?? 72
+        return 82 + tall*p + (st.age >= s.matureDays ? (ABSURD.contains { $0.id == s.id } ? 44 : 22) : 10)
+    }
+    /// Small frosted growth chip: '레벨 N 씨앗' + bar + '성장도 12%' (fixed min on-screen size)
+    func drawGauge(_ cx: CGFloat) {
+        guard let (lv, nm, g) = levelInfo else { return }
+        let sc = sceneScale(self), fs = max(8, 9 / sc), compact = fs > 12
+        let a: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: fs, weight: .medium), .foregroundColor: NSColor(calibratedRed: 0.22, green: 0.2, blue: 0.3, alpha: 1)]
+        let l1 = (compact ? "Lv.\(lv) \(nm)" : "레벨 \(lv) \(nm)") as NSString, l2 = String(format: compact ? "%.0f%%" : "성장도 %.0f%%", g * 100) as NSString
+        let s1 = l1.size(withAttributes: a), s2 = l2.size(withAttributes: a)
+        let barH = max(2.5, 3 / sc), gap = max(2, 2.5 / sc)
+        let wInner = max(s1.width, s2.width, 40), h = s1.height + gap + barH + gap + s2.height
+        let covered = st.covered ?? false
+        var y = max(covered ? 112 : 0, plantTopY + 6); y = min(y, bounds.height - h - 6)
+        let box = NSRect(x: cx - wInner/2 - 6, y: y, width: wInner + 12, height: h + 8)
+        if !covered { withShadow(NSColor(calibratedRed: 0.2, green: 0.15, blue: 0.35, alpha: 0.25), blur: 4, dy: -1) { NSColor(white: 1, alpha: 0.72).setFill(); NSBezierPath(roundedRect: box, xRadius: min(8, box.height/2), yRadius: min(8, box.height/2)).fill() } }
+        var ty = box.maxY - 4 - s1.height
+        l1.draw(at: NSPoint(x: cx - s1.width/2, y: ty), withAttributes: a); ty -= gap + barH
+        let track = NSRect(x: cx - wInner/2, y: ty, width: wInner, height: barH)
+        NSColor(white: 1, alpha: 0.9).setFill(); NSBezierPath(roundedRect: track, xRadius: barH/2, yRadius: barH/2).fill()
+        NSColor(white: 0, alpha: 0.08).setStroke(); NSBezierPath(roundedRect: track, xRadius: barH/2, yRadius: barH/2).stroke()
+        NSColor(calibratedRed: 0.36, green: 0.75, blue: 0.4, alpha: 1).setFill(); NSBezierPath(roundedRect: NSRect(x: track.minX, y: track.minY, width: max(barH, track.width * CGFloat(g)), height: barH), xRadius: barH/2, yRadius: barH/2).fill()
+        ty -= gap + s2.height; l2.draw(at: NSPoint(x: cx - s2.width/2, y: ty), withAttributes: a)
+    }
 }
