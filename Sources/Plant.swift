@@ -73,11 +73,23 @@ class PlantView: NSView {
         // one-time migration to growth-speed system: re-derive age from elapsed real time (never kills the plant)
         if !defaults.bool(forKey: "speedMigrated"), let s = sp, !st.dead { st.age = max(st.age, st.realDays * s.speedFactor * 0.9); defaults.set(true, forKey: "speedMigrated"); save() }
         catchUp()
-        Timer.scheduledTimer(withTimeInterval: 1/20, repeats: true) { [weak self] _ in guard let s = self else { return }; s.t += 1/20; if s.splash > 0 { s.splash -= 1/20 }; s.needsDisplay = true }
+        scheduleAnim(20)
         Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in self?.minuteTick() }
         checkTrash(); updateTooltip()
     }
     required init?(coder: NSCoder) { fatalError() }
+    var animTimer: Timer?; var animFPS: Double = 0; var lastAnim = CACurrentMediaTime()
+    /// 20fps for splashes/toasts/hover fades, 8fps for gentle idle sway
+    func scheduleAnim(_ f: Double) {
+        guard f != animFPS else { return }; animFPS = f; animTimer?.invalidate()
+        let tm = Timer(timeInterval: 1 / f, repeats: true) { [weak self] _ in self?.animTick() }; tm.tolerance = 0.2 / f; RunLoop.main.add(tm, forMode: .common); animTimer = tm
+    }
+    func animTick() {
+        let now = CACurrentMediaTime(), dt = CGFloat(min(0.3, now - lastAnim)); lastAnim = now
+        t += dt; if splash > 0 { splash -= dt }; needsDisplay = true
+        let busy = splash > 0 || toast != nil || (gaugeAlpha > 0.01 && gaugeAlpha < 0.99) || (isCold && !(st.covered ?? false))
+        scheduleAnim(busy ? 20 : 8)
+    }
     func save() { if let d = try? JSONEncoder().encode(st) { try? d.write(to: url) } }
 
     var receivedLight: Double { outdoorLight * posFactor * ((st.covered ?? false) ? 0.6 : 1) }

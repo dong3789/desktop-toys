@@ -70,7 +70,7 @@ enum Updater {
             rm -rf "\(target.path).old"; mv "\(target.path)" "\(target.path).old" 2>/dev/null
             if /usr/bin/ditto "\(newApp.path)" "\(target.path)"; then rm -rf "\(target.path).old"; else mv "\(target.path).old" "\(target.path)"; fi
             /usr/bin/xattr -cr "\(target.path)"
-            \(relaunch ? "open \"\(target.path)\"" : "")
+            \(relaunch ? "launchctl kickstart -k gui/$(id -u)/com.yndl.desktop-toys 2>/dev/null || open \"\(target.path)\"" : "")
             """
             try? sh.write(to: script, atomically: true, encoding: .utf8)
             let p = Process(); p.executableURL = URL(fileURLWithPath: "/bin/bash"); p.arguments = [script.path]

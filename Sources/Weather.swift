@@ -128,7 +128,7 @@ class WeatherView: NSView {
         super.init(frame: frame)
         let g = glassRect; card.frame = NSRect(x: g.minX + 8, y: g.maxY - 62, width: g.width - 16, height: 54); addSubview(card); card.isHidden = true
         for _ in 0..<160 { parts.append((.random(in: 0...1), .random(in: 0...1), .random(in: 0.3...1))) }
-        Timer.scheduledTimer(withTimeInterval: 1/24, repeats: true) { [weak self] _ in self?.tick() }
+        scheduleTick(24)
         // Wall-clock driven refresh (NSTimer intervals pause during sleep): every minute recompute day/night
         // from the clock + real sunrise/sunset, and refetch when data is ≥15 min old (retry each minute on failure)
         Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in self?.clockTick() }
@@ -140,19 +140,29 @@ class WeatherView: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
+    var tickTimer: Timer?; var tickFPS: Double = 0; var lastTick = CACurrentMediaTime()
+    /// 24fps while precipitation/storm/hover animate, 8fps for a calm sky (low CPU)
+    func scheduleTick(_ f: Double) {
+        guard f != tickFPS else { return }; tickFPS = f; tickTimer?.invalidate()
+        let tm = Timer(timeInterval: 1 / f, repeats: true) { [weak self] _ in self?.tick() }; tm.tolerance = 0.2 / f; RunLoop.main.add(tm, forMode: .common); tickTimer = tm
+    }
+    var wantsFast: Bool { let w = wx; return w.precip != .none || w.fog || w.wind >= 25 || flash > 0 || hover != hoverTarget || w.yellowDust }
     func tick() {
-        t += 1/24
+        let now = CACurrentMediaTime(); var dt = CGFloat(now - lastTick); lastTick = now; if dt <= 0 || dt > 0.3 { dt = 1/24 }
+        let k = dt * 24
+        if window != nil || superview != nil { scheduleTick(wantsFast ? 24 : 8) }
+        t += dt
         let w = wx, p = w.precip
         let fall: CGFloat, drift = CGFloat(w.wind) / 4000
         switch p {
         case .drizzle: fall = 0.006; case .rain, .freezingRain: fall = 0.013; case .heavyRain, .storm: fall = 0.022
         case .sleet: fall = 0.008; case .snow: fall = 0.0025; case .heavySnow: fall = 0.0035; case .blizzard: fall = 0.006
         case .none: fall = 0.002 }
-        parts = parts.map { q in var y = q.1 - fall * q.2; var x = q.0 + drift * q.2 + (p == .snow || p == .heavySnow ? sin(t*2 + q.2*9)*0.0012 : 0)
-            if y < 0 { y = 1; x = .random(in: 0...1) }; if x > 1 { x -= 1 }; return (x, y, q.2) }
+        parts = parts.map { q in var y = q.1 - fall * q.2 * k; var x = q.0 + drift * q.2 * k + (p == .snow || p == .heavySnow ? sin(t*2 + q.2*9)*0.0012 : 0)
+            if y < 0 { y = 1; x = .random(in: 0...1) }; _ = k; if x > 1 { x -= 1 }; return (x, y, q.2) }
         if p == .storm { if t > nextFlash { flash = 1; nextFlash = t + .random(in: 5...11) } }
-        flash = max(0, flash - 0.08)
-        if abs(hover - hoverTarget) > 0.01 { setHover(hover + (hoverTarget - hover) * 0.25) } else if hover != hoverTarget { setHover(hoverTarget) }
+        flash = max(0, flash - 0.08 * k)
+        if abs(hover - hoverTarget) > 0.01 { setHover(hover + (hoverTarget - hover) * (1 - pow(0.75, k))) } else if hover != hoverTarget { setHover(hoverTarget) }
         if hover > 0 { (card.subviews.first as? CardView)?.needsDisplay = true; if external { bubble.bubbleView.card.needsDisplay = true } }
         needsDisplay = true
     }

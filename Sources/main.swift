@@ -54,7 +54,7 @@ func applyScale(_ w: NSWindow, _ sc: CGFloat) {
 }
 let CITIES: [(String, Double, Double)] = [("서울", 37.5665, 126.978), ("인천", 37.4563, 126.7052), ("수원", 37.2636, 127.0286), ("춘천", 37.8813, 127.7298), ("강릉", 37.7519, 128.8761), ("대전", 36.3504, 127.3845), ("대구", 35.8714, 128.6014), ("광주", 35.1595, 126.8526), ("부산", 35.1796, 129.0756), ("울산", 35.5384, 129.3114), ("제주", 33.4996, 126.5312)]
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    var item: NSStatusItem!; var win: ToyWindow!; var pv: PlantView!; var accelItem: NSMenuItem!; var weatherView: WeatherView!; var debugItem: NSMenuItem!; var loginItem: NSMenuItem!; var cityMenu: NSMenu!; var speedMenu: NSMenu!; var dexMenu: NSMenu!; var designMenu: NSMenu!; var autoUpdItem: NSMenuItem!; var jelly: JellyController!; var jellyMenu: NSMenu!
+    var item: NSStatusItem!; var win: ToyWindow!; var pv: PlantView!; var accelItem: NSMenuItem!; var weatherView: WeatherView!; var debugItem: NSMenuItem!; var loginItem: NSMenuItem!; var cityMenu: NSMenu!; var speedMenu: NSMenu!; var dexMenu: NSMenu!; var designMenu: NSMenu!; var autoUpdItem: NSMenuItem!
     func applicationDidFinishLaunching(_ n: Notification) {
         let scr = NSScreen.main!.visibleFrame
         let (wv, p) = makeScene(); pv = p
@@ -79,8 +79,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for (i, t) in ["실제 (1배)", "빠름 (약 1주)", "아주 빠름 (1~2일)"].enumerated() { let it = spM.addItem(withTitle: t, action: #selector(setSpeed(_:)), keyEquivalent: ""); it.target = self; it.tag = i }
         m.addItem(withTitle: "성장 속도", action: nil, keyEquivalent: "").submenu = spM; refreshSpeed()
         let dM = NSMenu(); designMenu = dM; m.addItem(withTitle: "디자인", action: nil, keyEquivalent: "").submenu = dM; buildDesignMenu()
-        let jM = NSMenu(); jellyMenu = jM; m.addItem(withTitle: "🪼 해파리", action: nil, keyEquivalent: "").submenu = jM
-        jelly = JellyController(); jelly.start(below: win)
         let dexM = NSMenu(); dexMenu = dexM; m.addItem(withTitle: "📖 도감", action: nil, keyEquivalent: "").submenu = dexM
         accelItem = m.addItem(withTitle: "시간 가속 (1분 = 1일)", action: #selector(ta), keyEquivalent: ""); accelItem.target = self
         accelItem.state = defaults.bool(forKey: "accel") ? .on : .off
@@ -115,7 +113,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DispatchQueue.main.async { self.setCity(name, la, lo) } }.resume()
     }
     func menuWillOpen(_ menu: NSMenu) {
-        jellyMenu.removeAllItems(); jelly.fillMenu(jellyMenu, includeToggle: true)
         dexMenu.removeAllItems()
         let dex = (defaults.dictionary(forKey: "dex") as? [String: Int] ?? [:]).sorted { $0.key < $1.key }
         if dex.isEmpty { dexMenu.addItem(withTitle: "아직 수확한 게 없어요", action: nil, keyEquivalent: "").isEnabled = false }
@@ -272,31 +269,6 @@ if let i = CommandLine.arguments.firstIndex(of: "--mystery"), i+1 < CommandLine.
     img.unlockFocus(); let rep = NSBitmapImageRep(data: img.tiffRepresentation!)!
     try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: CommandLine.arguments[i+1])); exit(0)
 }
-if let i = CommandLine.arguments.firstIndex(of: "--jelly"), i+1 < CommandLine.arguments.count {
-    // Preview frames: baby / adult / happy (petting) / hungry / eating
-    let cw: CGFloat = 330, ch: CGFloat = 420, cells = ["아기 해파리", "어른 해파리", "쓰다듬는 중 (행복)", "배고픔 (시무룩)", "먹이 먹는 중"]
-    let img = NSImage(size: NSSize(width: cw * CGFloat(cells.count) + 20, height: ch + 40)); img.lockFocus()
-    NSGradient(colors: [NSColor(calibratedRed: 0.1, green: 0.16, blue: 0.34, alpha: 1), NSColor(calibratedRed: 0.32, green: 0.24, blue: 0.5, alpha: 1), NSColor(calibratedRed: 0.85, green: 0.6, blue: 0.62, alpha: 1)])!.draw(in: NSRect(x: 0, y: 0, width: img.size.width, height: img.size.height), angle: -90)
-    for (k, title) in cells.enumerated() {
-        let jm = Jelly(); jm.st = JellyState(); jm.st.growth = k == 0 ? 0.3 : 6; jm.st.fullness = k == 3 ? 0.05 : 0.8; jm.st.happiness = k == 3 ? 0.1 : k == 2 ? 0.95 : 0.7
-        let v = JellyView(frame: NSRect(x: 0, y: 0, width: cw, height: ch), model: jm); v.swimRect = NSRect(x: -5000, y: -5000, width: 10000, height: 10000)
-        let home = CGPoint(x: cw / 2 + (k == 4 ? 20 : 0), y: ch * 0.62); v.pos = home; v.heading = .pi / 2 + (k % 2 == 0 ? 0.25 : -0.2); v.resetChains()
-        if k == 4 { for j in 0..<6 { v.food.append(Food(p: CGPoint(x: home.x - 60 + CGFloat(j) * 26, y: home.y + 70 + CGFloat(j % 3) * 22), v: 0, age: 5, seed: CGFloat(j))) } }
-        for f in 0..<150 { v.target = CGPoint(x: home.x + 300 * cos(v.heading), y: home.y + 300 * sin(v.heading)); let keepFood = v.food; v.step(1.0 / 30); v.food = keepFood; v.pos = home; v.vel = .zero
-            if k == 2 { v.petted(1.0 / 30) }; if k == 4 && f > 140 { v.eatGlow = 1 } }
-        if k == 4 { v.food.removeFirst(2) }
-        v.phase = .pi * 0.3; v.contract = 0.3
-        let r = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(cw), pixelsHigh: Int(ch), bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
-        v.cacheDisplay(in: v.bounds, to: r); r.draw(in: NSRect(x: 10 + CGFloat(k) * cw, y: 30, width: cw, height: ch), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
-        let a: [NSAttributedString.Key: Any] = [.font: cute(15), .foregroundColor: NSColor.white]; let ts = title as NSString, sz = ts.size(withAttributes: a)
-        ts.draw(at: NSPoint(x: 10 + CGFloat(k) * cw + (cw - sz.width) / 2, y: 10), withAttributes: a)
-        let sub = String(format: "배부름 %.0f%% · 행복도 %.0f%% · %@", jm.st.fullness * 100, jm.st.happiness * 100, Jelly.stageNames[jm.stage]) as NSString
-        let a2: [NSAttributedString.Key: Any] = [.font: cute(11), .foregroundColor: NSColor(white: 1, alpha: 0.75)]; let s2 = sub.size(withAttributes: a2)
-        sub.draw(at: NSPoint(x: 10 + CGFloat(k) * cw + (cw - s2.width) / 2, y: ch + 14), withAttributes: a2)
-    }
-    img.unlockFocus(); let rep = NSBitmapImageRep(data: img.tiffRepresentation!)!
-    try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: CommandLine.arguments[i+1])); exit(0)
-}
 if let i = CommandLine.arguments.firstIndex(of: "--gauge"), i+1 < CommandLine.arguments.count {
     // normal vs hover (covered and uncovered) at 100%
     windowStyle = 5; potStyle = 6; bgImage = nil
@@ -374,7 +346,13 @@ if let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i+1 < CommandLine
     img.unlockFocus(); let rep = NSBitmapImageRep(data: img.tiffRepresentation!)!
     try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: CommandLine.arguments[i+1])); exit(0)
 }
-if let me = Bundle.main.bundleIdentifier, NSRunningApplication.runningApplications(withBundleIdentifier: me).filter({ $0.processIdentifier != getpid() }).count > 0 { exit(0) }   // single instance
+// newest launch wins: replace an older running copy (e.g. one relaunched outside launchd), instead of quietly exiting
+if let me = Bundle.main.bundleIdentifier {
+    let others = NSRunningApplication.runningApplications(withBundleIdentifier: me).filter { $0.processIdentifier != getpid() }
+    others.forEach { $0.terminate() }
+    let end = Date().addingTimeInterval(3); while others.contains(where: { !$0.isTerminated }) && Date() < end { RunLoop.current.run(until: Date().addingTimeInterval(0.1)) }
+    others.filter { !$0.isTerminated }.forEach { $0.forceTerminate() }
+}
 if !defaults.bool(forKey: "glassTheme120") { defaults.set(true, forKey: "glassTheme120"); defaults.set(5, forKey: "windowStyle"); defaults.set(6, forKey: "potStyle"); windowStyle = 5; potStyle = 6 }   // v1.2.0: new default theme (others stay selectable)
 if let c = defaults.string(forKey: "cityName"), koreanCity(c) != c { defaults.set(koreanCity(c), forKey: "cityName") }   // migrate English IP city names
 let app = NSApplication.shared; let del = AppDelegate(); app.delegate = del; app.setActivationPolicy(.accessory); app.run()
